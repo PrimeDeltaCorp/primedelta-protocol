@@ -17,6 +17,10 @@ contract FIOracle is IPriceOracle, AccessControl {
     error FeeTransferFailed();
     error InvalidFeeRecipient();
 
+    // Real quote time sits ahead of block.timestamp during eth_call (Besu
+    // simulates against the last mined block, ~10s stale + cross-node lag).
+    uint256 public constant MAX_CLOCK_SKEW = 30 seconds;
+
     address public trustedSigner;
     uint256 public pricePerUpdate;
     address public feeRecipient;
@@ -93,7 +97,9 @@ contract FIOracle is IPriceOracle, AccessControl {
         if (p.publishTime == 0) {
             revert PriceFeedNotFound();
         }
-        if (block.timestamp - p.publishTime > age) {
+        // Guard the subtraction: a within-skew future publishTime is fresh,
+        // not stale, and block.timestamp - publishTime would underflow.
+        if (block.timestamp > p.publishTime && block.timestamp - p.publishTime > age) {
             revert StalePrice();
         }
         return p;
@@ -115,7 +121,7 @@ contract FIOracle is IPriceOracle, AccessControl {
         int32 expo = int32(uint32(bytes4(data[40:44])));
         uint64 publishTime = uint64(bytes8(data[44:52]));
 
-        if (publishTime > block.timestamp) {
+        if (publishTime > block.timestamp + MAX_CLOCK_SKEW) {
             revert FuturePublishTime();
         }
 
