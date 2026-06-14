@@ -94,6 +94,23 @@ contract FIOracleTest is Test {
         oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
     }
 
+    function testAcceptsPublishTimeWithinClockSkew() public {
+        uint64 future = uint64(block.timestamp + oracle.MAX_CLOCK_SKEW());
+        _updatePrice(AAPL_FEED_ID, 15230000000, -8, future);
+
+        IPriceOracle.Price memory p = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+        assertEq(p.publishTime, future);
+    }
+
+    function testRejectsPublishTimeBeyondClockSkew() public {
+        uint64 tooFar = uint64(block.timestamp + oracle.MAX_CLOCK_SKEW() + 1);
+        bytes[] memory updateData = new bytes[](1);
+        updateData[0] = _signPrice(AAPL_FEED_ID, 15230000000, -8, tooFar);
+
+        vm.expectRevert(FIOracle.FuturePublishTime.selector);
+        oracle.updatePriceFeeds(updateData);
+    }
+
     function testIgnoresOlderPublishTime() public {
         _updatePrice(AAPL_FEED_ID, 15230000000, -8, uint64(block.timestamp));
 

@@ -90,8 +90,13 @@ contract DclexPoolTest is Test, TestBalance {
         usdcMock = USDCMock(address(config.dusdToken));
         priceOracle = MockPriceOracle(address(config.oracle));
         vm.startPrank(ADMIN);
-        stocksFactory.createStocks("Apple", "AAPL");
-        stocksFactory.createStocks("NVIDIA", "NVDA");
+        string[] memory stockNames = new string[](2);
+        string[] memory stockSymbols = new string[](2);
+        stockNames[0] = "Apple";
+        stockSymbols[0] = "AAPL";
+        stockNames[1] = "NVIDIA";
+        stockSymbols[1] = "NVDA";
+        stocksFactory.createStocks(stockNames, stockSymbols);
         vm.stopPrank();
         aaplStock = Stock(stocksFactory.stocks("AAPL"));
         nvdaStock = Stock(stocksFactory.stocks("NVDA"));
