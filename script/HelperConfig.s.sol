@@ -66,9 +66,12 @@ contract HelperConfig is Script {
         // redeploy without anyone noticing until the first swap reverted.
         address admin = vm.envAddress("ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
+        // Dedicated FIOracle price signer; defaults to the backend signer
+        // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
+        address oracleSigner = vm.envOr("FI_ORACLE_SIGNER_ADDRESS", backendSigner);
         address dusdTokenAddress = vm.envAddress("DUSD_ADDRESS");
         vm.startBroadcast(vm.envUint("ADMIN_PRIVATE_KEY"));
-        FIOracle fiOracle = new FIOracle(backendSigner, admin);
+        FIOracle fiOracle = new FIOracle(oracleSigner, admin);
         fiOracle.setPricePerUpdate(0.001 ether);
         vm.stopBroadcast();
         primedeltaDevNetworkConfig = NetworkConfig({
@@ -92,9 +95,12 @@ contract HelperConfig is Script {
         // DEFAULT_ADMIN_ROLE which is held by ADMIN (not MASTER).
         address admin = vm.envAddress("ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
+        // Dedicated FIOracle price signer; defaults to the backend signer
+        // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
+        address oracleSigner = vm.envOr("FI_ORACLE_SIGNER_ADDRESS", backendSigner);
         address dusdTokenAddress = vm.envAddress("DUSD_ADDRESS");
         vm.startBroadcast(vm.envUint("ADMIN_PRIVATE_KEY"));
-        FIOracle fiOracle = new FIOracle(backendSigner, admin);
+        FIOracle fiOracle = new FIOracle(oracleSigner, admin);
         fiOracle.setPricePerUpdate(0.001 ether);
         vm.stopBroadcast();
         primedeltaTestnetNetworkConfig = NetworkConfig({
