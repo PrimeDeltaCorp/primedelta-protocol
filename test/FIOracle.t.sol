@@ -23,8 +23,34 @@ contract FIOracleTest is Test {
         int32 expo,
         uint64 publishTime
     ) internal view returns (bytes memory) {
+        return
+            _signPriceFor(
+                address(oracle),
+                block.chainid,
+                feedId,
+                price,
+                expo,
+                publishTime
+            );
+    }
+
+    function _signPriceFor(
+        address oracleAddr,
+        uint256 chainId,
+        bytes32 feedId,
+        int64 price,
+        int32 expo,
+        uint64 publishTime
+    ) internal view returns (bytes memory) {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedId, price, expo, publishTime)
+            abi.encodePacked(
+                chainId,
+                oracleAddr,
+                feedId,
+                price,
+                expo,
+                publishTime
+            )
         );
         bytes32 ethSignedHash = _toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, ethSignedHash);
@@ -60,13 +86,51 @@ contract FIOracleTest is Test {
         address wrongSigner = vm.addr(wrongKey);
 
         bytes32 messageHash = keccak256(
-            abi.encodePacked(AAPL_FEED_ID, int64(100), int32(-8), uint64(block.timestamp))
+            abi.encodePacked(
+                block.chainid,
+                address(oracle),
+                AAPL_FEED_ID,
+                int64(100),
+                int32(-8),
+                uint64(block.timestamp)
+            )
         );
         bytes32 ethSignedHash = _toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethSignedHash);
 
         bytes[] memory updateData = new bytes[](1);
         updateData[0] = abi.encodePacked(AAPL_FEED_ID, int64(100), int32(-8), uint64(block.timestamp), v, r, s);
+
+        vm.expectRevert(FIOracle.InvalidSignature.selector);
+        oracle.updatePriceFeeds(updateData);
+    }
+
+    function testRejectsReplayFromAnotherOracleInstance() public {
+        FIOracle otherOracle = new FIOracle(signer, admin);
+        bytes[] memory updateData = new bytes[](1);
+        updateData[0] = _signPriceFor(
+            address(otherOracle),
+            block.chainid,
+            AAPL_FEED_ID,
+            15230000000,
+            -8,
+            uint64(block.timestamp)
+        );
+
+        vm.expectRevert(FIOracle.InvalidSignature.selector);
+        oracle.updatePriceFeeds(updateData);
+    }
+
+    function testRejectsReplayFromAnotherChain() public {
+        bytes[] memory updateData = new bytes[](1);
+        updateData[0] = _signPriceFor(
+            address(oracle),
+            block.chainid + 1,
+            AAPL_FEED_ID,
+            15230000000,
+            -8,
+            uint64(block.timestamp)
+        );
 
         vm.expectRevert(FIOracle.InvalidSignature.selector);
         oracle.updatePriceFeeds(updateData);

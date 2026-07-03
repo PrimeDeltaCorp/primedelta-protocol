@@ -130,7 +130,14 @@ contract FIOracle is IPriceOracle, AccessControl {
         }
 
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedId, price, expo, publishTime)
+            abi.encodePacked(
+                block.chainid,
+                address(this),
+                feedId,
+                price,
+                expo,
+                publishTime
+            )
         );
         bytes32 ethSignedHash = messageHash.toEthSignedMessageHash();
 
