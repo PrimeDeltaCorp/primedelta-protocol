@@ -16,6 +16,7 @@ contract FIOracle is IPriceOracle, AccessControl {
     error InsufficientFee();
     error FeeTransferFailed();
     error InvalidFeeRecipient();
+    error InvalidTrustedSigner();
 
     // Real quote time sits ahead of block.timestamp during eth_call (Besu
     // simulates against the last mined block, ~10s stale + cross-node lag).
@@ -31,6 +32,7 @@ contract FIOracle is IPriceOracle, AccessControl {
     event FeeRecipientChanged(address feeRecipient);
 
     constructor(address _trustedSigner, address admin) {
+        if (_trustedSigner == address(0)) revert InvalidTrustedSigner();
         trustedSigner = _trustedSigner;
         feeRecipient = admin;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
@@ -39,6 +41,7 @@ contract FIOracle is IPriceOracle, AccessControl {
     function setTrustedSigner(
         address _trustedSigner
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_trustedSigner == address(0)) revert InvalidTrustedSigner();
         trustedSigner = _trustedSigner;
         emit TrustedSignerUpdated(_trustedSigner);
     }
