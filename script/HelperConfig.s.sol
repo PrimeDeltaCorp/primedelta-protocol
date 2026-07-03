@@ -67,7 +67,7 @@ contract HelperConfig is Script {
         address admin = vm.envAddress("ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
         // Dedicated FIOracle price signer; defaults to the backend signer
-        // when unset so dev stays collapsed (no separate oracle key).
+        // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
         address oracleSigner = vm.envOr("FI_ORACLE_SIGNER_ADDRESS", backendSigner);
         address dusdTokenAddress = vm.envAddress("DUSD_ADDRESS");
         vm.startBroadcast(vm.envUint("ADMIN_PRIVATE_KEY"));
@@ -96,7 +96,7 @@ contract HelperConfig is Script {
         address admin = vm.envAddress("ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
         // Dedicated FIOracle price signer; defaults to the backend signer
-        // when unset so dev stays collapsed (no separate oracle key).
+        // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
         address oracleSigner = vm.envOr("FI_ORACLE_SIGNER_ADDRESS", backendSigner);
         address dusdTokenAddress = vm.envAddress("DUSD_ADDRESS");
         vm.startBroadcast(vm.envUint("ADMIN_PRIVATE_KEY"));
