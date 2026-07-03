@@ -23,8 +23,34 @@ contract FIOracleTest is Test {
         int32 expo,
         uint64 publishTime
     ) internal view returns (bytes memory) {
+        return
+            _signPriceFor(
+                address(oracle),
+                block.chainid,
+                feedId,
+                price,
+                expo,
+                publishTime
+            );
+    }
+
+    function _signPriceFor(
+        address oracleAddr,
+        uint256 chainId,
+        bytes32 feedId,
+        int64 price,
+        int32 expo,
+        uint64 publishTime
+    ) internal view returns (bytes memory) {
         bytes32 messageHash = keccak256(
-            abi.encodePacked(feedId, price, expo, publishTime)
+            abi.encodePacked(
+                chainId,
+                oracleAddr,
+                feedId,
+                price,
+                expo,
+                publishTime
+            )
         );
         bytes32 ethSignedHash = _toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerKey, ethSignedHash);
@@ -60,13 +86,51 @@ contract FIOracleTest is Test {
         address wrongSigner = vm.addr(wrongKey);
 
         bytes32 messageHash = keccak256(
-            abi.encodePacked(AAPL_FEED_ID, int64(100), int32(-8), uint64(block.timestamp))
+            abi.encodePacked(
+                block.chainid,
+                address(oracle),
+                AAPL_FEED_ID,
+                int64(100),
+                int32(-8),
+                uint64(block.timestamp)
+            )
         );
         bytes32 ethSignedHash = _toEthSignedMessageHash(messageHash);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(wrongKey, ethSignedHash);
 
         bytes[] memory updateData = new bytes[](1);
         updateData[0] = abi.encodePacked(AAPL_FEED_ID, int64(100), int32(-8), uint64(block.timestamp), v, r, s);
+
+        vm.expectRevert(FIOracle.InvalidSignature.selector);
+        oracle.updatePriceFeeds(updateData);
+    }
+
+    function testRejectsReplayFromAnotherOracleInstance() public {
+        FIOracle otherOracle = new FIOracle(signer, admin);
+        bytes[] memory updateData = new bytes[](1);
+        updateData[0] = _signPriceFor(
+            address(otherOracle),
+            block.chainid,
+            AAPL_FEED_ID,
+            15230000000,
+            -8,
+            uint64(block.timestamp)
+        );
+
+        vm.expectRevert(FIOracle.InvalidSignature.selector);
+        oracle.updatePriceFeeds(updateData);
+    }
+
+    function testRejectsReplayFromAnotherChain() public {
+        bytes[] memory updateData = new bytes[](1);
+        updateData[0] = _signPriceFor(
+            address(oracle),
+            block.chainid + 1,
+            AAPL_FEED_ID,
+            15230000000,
+            -8,
+            uint64(block.timestamp)
+        );
 
         vm.expectRevert(FIOracle.InvalidSignature.selector);
         oracle.updatePriceFeeds(updateData);
@@ -129,6 +193,27 @@ contract FIOracleTest is Test {
 
         IPriceOracle.Price memory p = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
         assertEq(p.price, 16000000000);
+    }
+
+    function testSameInstanceReplayCannotSuppressNewerGenuineUpdate() public {
+        uint64 t = uint64(block.timestamp);
+
+        bytes[] memory blob = new bytes[](1);
+        blob[0] = _signPrice(AAPL_FEED_ID, 15230000000, -8, t);
+        oracle.updatePriceFeeds(blob);
+
+        skip(5);
+        oracle.updatePriceFeeds(blob);
+
+        IPriceOracle.Price memory pinned = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+        assertEq(pinned.price, 15230000000);
+        assertEq(pinned.publishTime, t);
+
+        _updatePrice(AAPL_FEED_ID, 16000000000, -8, t + 1);
+
+        IPriceOracle.Price memory fresh = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+        assertEq(fresh.price, 16000000000);
+        assertEq(fresh.publishTime, t + 1);
     }
 
     function testBatchUpdate() public {

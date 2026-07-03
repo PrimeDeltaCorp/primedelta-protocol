@@ -21,14 +21,11 @@ contract DeployDclexPool is Script {
         uint256 protocolFeeRate
     ) external returns (DclexPool) {
         HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
-        string memory stockSymbol = stockToken.symbol();
-        bytes32 stockPriceFeedId = helperConfig.getPriceFeedId(stockSymbol);
         vm.startBroadcast();
         DclexPool dclexPool = new DclexPool(
             stockToken,
             config.dusdToken,
             config.oracle,
-            stockPriceFeedId,
             feeCurveA,
             feeCurveB,
             protocolFeeRate,
@@ -47,13 +44,10 @@ contract DeployDclexPool is Script {
         uint256 protocolFeeRate
     ) external returns (DclexPool) {
         HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
-        string memory stockSymbol = stockToken.symbol();
-        bytes32 stockPriceFeedId = helperConfig.getPriceFeedId(stockSymbol);
         return new DclexPool(
             stockToken,
             config.dusdToken,
             config.oracle,
-            stockPriceFeedId,
             feeCurveA,
             feeCurveB,
             protocolFeeRate,

@@ -86,7 +86,6 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         IStock _stockToken,
         IERC20 _stablecoinToken,
         IPriceOracle _oracle,
-        bytes32 _stockPriceFeedId,
         uint256 _feeCurveA,
         uint256 _feeCurveB,
         uint256 _protocolFeeRate,
@@ -116,7 +115,7 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         stockToken = _stockToken;
         stablecoinToken = _stablecoinToken;
         oracle = _oracle;
-        stockPriceFeedId = _stockPriceFeedId;
+        stockPriceFeedId = keccak256(abi.encodePacked(address(_stockToken)));
         feeCurveA = _feeCurveA;
         feeCurveB = _feeCurveB;
         protocolFeeRate = _protocolFeeRate;

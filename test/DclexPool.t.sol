@@ -107,8 +107,8 @@ contract DclexPoolTest is Test, TestBalance {
         digitalIdentity.mintAdmin(address(aaplPool), 0, bytes32(0));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(nvdaPool), 0, bytes32(0));
-        AAPL_PRICE_FEED_ID = helperConfig.getPriceFeedId("AAPL");
-        NVDA_PRICE_FEED_ID = helperConfig.getPriceFeedId("NVDA");
+        AAPL_PRICE_FEED_ID = keccak256(abi.encodePacked(address(aaplStock)));
+        NVDA_PRICE_FEED_ID = keccak256(abi.encodePacked(address(nvdaStock)));
         updatePrice(AAPL_PRICE_FEED_ID, 1 ether);
         updatePrice(NVDA_PRICE_FEED_ID, 1 ether);
         setupAccount(address(this));
@@ -3094,7 +3094,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(aaplStock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             0,
             0,
             0,
@@ -3109,7 +3108,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             1 ether + 1,
             0,
             0,
@@ -3121,7 +3119,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             0,
             1 ether + 1,
             0,
@@ -3137,7 +3134,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             0,
             0,
             0.15 ether + 1,
@@ -3153,7 +3149,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             0,
             0,
             0.15 ether,
@@ -3168,7 +3163,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             IPriceOracle(address(0)),
-            AAPL_PRICE_FEED_ID,
             0,
             0,
             0,
@@ -3183,7 +3177,6 @@ contract DclexPoolTest is Test, TestBalance {
             aaplStock,
             IERC20(address(usdcMock)),
             oracle,
-            AAPL_PRICE_FEED_ID,
             0,
             0,
             0,
