@@ -195,6 +195,27 @@ contract FIOracleTest is Test {
         assertEq(p.price, 16000000000);
     }
 
+    function testSameInstanceReplayCannotSuppressNewerGenuineUpdate() public {
+        uint64 t = uint64(block.timestamp);
+
+        bytes[] memory blob = new bytes[](1);
+        blob[0] = _signPrice(AAPL_FEED_ID, 15230000000, -8, t);
+        oracle.updatePriceFeeds(blob);
+
+        skip(5);
+        oracle.updatePriceFeeds(blob);
+
+        IPriceOracle.Price memory pinned = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+        assertEq(pinned.price, 15230000000);
+        assertEq(pinned.publishTime, t);
+
+        _updatePrice(AAPL_FEED_ID, 16000000000, -8, t + 1);
+
+        IPriceOracle.Price memory fresh = oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+        assertEq(fresh.price, 16000000000);
+        assertEq(fresh.publishTime, t + 1);
+    }
+
     function testBatchUpdate() public {
         bytes32 nvdaFeedId = bytes32(uint256(2));
 
