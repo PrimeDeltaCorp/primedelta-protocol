@@ -324,4 +324,15 @@ contract FIOracleTest is Test {
         vm.expectRevert();
         oracle.setTrustedSigner(nobody);
     }
+
+    function testSetTrustedSignerRejectsZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(FIOracle.InvalidTrustedSigner.selector);
+        oracle.setTrustedSigner(address(0));
+    }
+
+    function testConstructorRejectsZeroTrustedSigner() public {
+        vm.expectRevert(FIOracle.InvalidTrustedSigner.selector);
+        new FIOracle(address(0), admin);
+    }
 }
