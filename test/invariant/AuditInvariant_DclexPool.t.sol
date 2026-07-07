@@ -23,6 +23,7 @@ import {StdUtils} from "forge-std/StdUtils.sol";
 import {StdInvariant} from "forge-std/StdInvariant.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {DclexPool} from "../../src/DclexPool.sol";
+import {IPriceOracle} from "../../src/IPriceOracle.sol";
 import {IDclexSwapCallback} from "../../src/IDclexSwapCallback.sol";
 import {DclexPoolTest} from "../DclexPool.t.sol";
 import {DeployDclexPool} from "script/DeployDclexPool.s.sol";
@@ -603,7 +604,7 @@ contract AuditInvariant_DclexPool is DclexPoolTest {
         assertGt(got, 0, "fresh-price swap should succeed");
         // Age the price strictly past the bound -> swap MUST revert (StalePrice).
         vm.warp(block.timestamp + staleness + 1);
-        vm.expectRevert();
+        vm.expectRevert(IPriceOracle.StalePrice.selector);
         pool.swapExactInput(false, 1 ether, address(this), "", empty);
     }
 
