@@ -75,7 +75,7 @@ contract DclexPoolTest is Test, TestBalance {
 
     receive() external payable {}
 
-    function setUp() public {
+    function setUp() public virtual {
         DeployDclex deployer = new DeployDclex();
         DeployDclex.DclexContracts memory contracts = deployer.run(
             ADMIN,
