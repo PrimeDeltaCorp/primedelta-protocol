@@ -15,7 +15,7 @@ pragma solidity ^0.8.26;
 // properties listed in the audit brief.
 //
 // Run:
-//   forge test --match-path test/AuditInvariant_DclexPool.t.sol -vvv
+//   forge test --match-path test/invariant/AuditInvariant_DclexPool.t.sol -vvv
 //   forge test --match-contract AuditInvariant_DclexPool -vvv
 
 import {Test, console} from "forge-std/Test.sol";

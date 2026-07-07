@@ -13,7 +13,7 @@ pragma solidity ^0.8.26;
 // reinvent): abi.encodePacked(feedId, price, expo, publishTime) -> eth-signed.
 //
 // Run:
-//   forge test --match-path test/AuditInvariant_FIOracle.t.sol -vvv
+//   forge test --match-path test/invariant/AuditInvariant_FIOracle.t.sol -vvv
 //   forge test --match-contract AuditInvariant_FIOracle -vvv
 
 import {Test, console} from "forge-std/Test.sol";
