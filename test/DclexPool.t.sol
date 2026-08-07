@@ -162,6 +162,20 @@ contract DclexPoolTest is Test, TestBalance {
         vm.stopPrank();
     }
 
+    function applySplit(
+        string memory symbol,
+        uint256 numerator,
+        uint256 denominator
+    ) private {
+        string[] memory symbols = new string[](1);
+        symbols[0] = symbol;
+        vm.startPrank(ADMIN);
+        stocksFactory.pauseStocks(symbols);
+        stocksFactory.setStockMultiplier(symbol, numerator, denominator);
+        stocksFactory.unpauseStocks(symbols);
+        vm.stopPrank();
+    }
+
     function updatePrice(bytes32 priceFeedId, uint256 price) private {
         skip(1);
         priceOracle.setPrice(priceFeedId, price);
@@ -774,24 +788,21 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         assertBalanceDecreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 2, 1);
+        applySplit("AAPL", 2, 1);
         updatePrice(AAPL_PRICE_FEED_ID, 0.5 ether);
 
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 2 AAPL shares
         assertBalanceDecreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 1, 2);
+        applySplit("AAPL", 1, 2);
         updatePrice(AAPL_PRICE_FEED_ID, 2 ether);
 
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 0.5 AAPL shares
         assertBalanceDecreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 4, 5);
+        applySplit("AAPL", 4, 5);
         updatePrice(AAPL_PRICE_FEED_ID, 1.25 ether);
 
         recordBalance(address(aaplStock), address(this));
@@ -807,24 +818,21 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         assertBalanceDecreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 2, 1);
+        applySplit("AAPL", 2, 1);
         updatePrice(AAPL_PRICE_FEED_ID, 0.5 ether);
 
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 2 AAPL shares
         assertBalanceDecreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 1, 2);
+        applySplit("AAPL", 1, 2);
         updatePrice(AAPL_PRICE_FEED_ID, 2 ether);
 
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 0.5 AAPL shares
         assertBalanceDecreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 4, 5);
+        applySplit("AAPL", 4, 5);
         updatePrice(AAPL_PRICE_FEED_ID, 1.25 ether);
 
         recordBalance(address(usdcMock), address(this));
@@ -1145,24 +1153,21 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA);
         assertBalanceIncreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 2, 1);
+        applySplit("AAPL", 2, 1);
         updatePrice(AAPL_PRICE_FEED_ID, 0.5 ether);
 
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 2 AAPL shares
         assertBalanceIncreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 1, 2);
+        applySplit("AAPL", 1, 2);
         updatePrice(AAPL_PRICE_FEED_ID, 2 ether);
 
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 0.5 AAPL shares
         assertBalanceIncreased(1e6);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 4, 5);
+        applySplit("AAPL", 4, 5);
         updatePrice(AAPL_PRICE_FEED_ID, 1.25 ether);
 
         recordBalance(address(usdcMock), address(this));
@@ -1178,24 +1183,21 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA);
         assertBalanceIncreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 2, 1);
+        applySplit("AAPL", 2, 1);
         updatePrice(AAPL_PRICE_FEED_ID, 0.5 ether);
 
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 2 AAPL shares
         assertBalanceIncreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 1, 2);
+        applySplit("AAPL", 1, 2);
         updatePrice(AAPL_PRICE_FEED_ID, 2 ether);
 
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.5 AAPL shares
         assertBalanceIncreased(1 ether);
 
-        vm.prank(ADMIN);
-        stocksFactory.setStockMultiplier("AAPL", 4, 5);
+        applySplit("AAPL", 4, 5);
         updatePrice(AAPL_PRICE_FEED_ID, 1.25 ether);
 
         recordBalance(address(aaplStock), address(this));
@@ -3387,5 +3389,20 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(usdcFeesAfter, 0);
         assertEq(aaplStock.balanceOf(RECEIVER_1), aaplFeesBefore);
         assertEq(usdcMock.balanceOf(RECEIVER_1), usdcFeesBefore / 1e12);
+    }
+
+    function testSetStockMultiplierRequiresPausedStock() public {
+        vm.prank(ADMIN);
+        vm.expectRevert(abi.encodeWithSignature("ExpectedPause()"));
+        stocksFactory.setStockMultiplier("AAPL", 2, 1);
+
+        (uint256 numerator, uint256 denominator) = aaplStock.multiplier();
+        assertEq(numerator, 1);
+        assertEq(denominator, 1);
+
+        applySplit("AAPL", 2, 1);
+        (numerator, denominator) = aaplStock.multiplier();
+        assertEq(numerator, 2);
+        assertEq(denominator, 1);
     }
 }
