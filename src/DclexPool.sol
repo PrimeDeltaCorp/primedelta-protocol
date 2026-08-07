@@ -38,6 +38,7 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     error DclexPool__ExcessiveInputAmount();
     error DclexPool__InsufficientOutputAmount();
     error DclexPool__DeadlineExpired();
+    error DclexPool__InvalidStockDecimals();
     error DclexPool__InvalidStablecoinDecimals();
     error DclexPool__ZeroAddress();
 
@@ -109,6 +110,9 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
             STABLECOIN_DECIMALS
         ) {
             revert DclexPool__InvalidStablecoinDecimals();
+        }
+        if (IERC20Metadata(address(_stockToken)).decimals() != DECIMALS) {
+            revert DclexPool__InvalidStockDecimals();
         }
         if (_feeCurveA > MAX_FEE_RATE || _feeCurveB > MAX_FEE_RATE) {
             revert DclexPool__FeeCurveOutOfBounds();
