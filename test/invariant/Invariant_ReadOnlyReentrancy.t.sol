@@ -16,11 +16,11 @@ pragma solidity ^0.8.26;
 //   pool.getReserves() and the raw token balances and records them as ghost
 //   state BEFORE paying the input. We then assert two properties:
 //
-//   (1) INV-ROR-WINDOW-PRESENT: on EVERY settled swap, the input-token reserve
-//       observed inside the callback is STRICTLY BELOW the settled post-swap
-//       reserve (mid-swap != post-swap). The read-only-reentrancy window is
-//       real and EXPECTED per R2-C-13 — we assert it is consistently present
-//       (never absent), documenting the exploitable observation window.
+//   (1) INV-ROR-WINDOW-PRESENT: on EVERY settled swap, the input-token RAW
+//       BALANCE observed inside the callback is STRICTLY BELOW the settled
+//       post-swap balance. The pool cannot guard another contract's view, so
+//       this leak is irreducible and is asserted to be consistently present —
+//       it documents why raw balanceOf is never a valid pricing source.
 //
 //   (2) INV-ROR-POST-CONSISTENT: AFTER every swap settles, the public view
 //       getReserves() equals raw token balances minus collected protocol fees.
@@ -62,6 +62,9 @@ contract ReadOnlyReentrancyHandler is IDclexSwapCallback, StdUtils {
     uint256 public ghost_windowChecks; // swaps we compared mid vs post
     uint256 public ghost_windowPresentCount; // swaps where mid input reserve < post
     bool public ghost_windowAbsent; // set if any settled swap showed NO window
+    uint256 public ghost_viewBlocked; // callbacks where getReserves() reverted
+    bool public ghost_probeInsideCallback; // poolOperationInProgress() seen mid-swap
+    bool public ghost_viewLeaked; // set if a guarded view ever answered mid-swap
     uint256 public callCount;
 
     bytes[] internal EMPTY;
@@ -86,15 +89,23 @@ contract ReadOnlyReentrancyHandler is IDclexSwapCallback, StdUtils {
         uint256 amount,
         bytes calldata
     ) external override {
-        // Read-only reentrancy: getReserves() is a plain view, NOT covered by
-        // the pool's nonReentrant guard, so this succeeds while the swap is
-        // still in flight. The output has already been transferred out; the
-        // input (this very payment) has not landed yet.
-        (uint256 sR, uint256 cR) = pool.getReserves();
-        ghost_midStockR = sR;
-        ghost_midScR = cR;
+        // getReserves() now carries nonReentrantView, so reading it here — the
+        // exact read-only-reentrancy window — must REVERT rather than answer
+        // with a mid-swap, deflated view.
+        try pool.getReserves() returns (uint256 sR, uint256 cR) {
+            ghost_midStockR = sR;
+            ghost_midScR = cR;
+            ghost_viewLeaked = true;
+        } catch {
+            ghost_viewBlocked++;
+        }
+
+        // Raw ERC20 balances stay readable — the pool cannot guard another
+        // contract's view. This is the irreducible leak the guard does not
+        // close, and integrators must never price off it.
         ghost_midStockRaw = stock.balanceOf(address(pool));
         ghost_midScRaw = stablecoin.balanceOf(address(pool));
+        ghost_probeInsideCallback = pool.poolOperationInProgress();
         ghost_callbackFired = true;
 
         // Now settle the input the pool is owed.
@@ -128,10 +139,11 @@ contract ReadOnlyReentrancyHandler is IDclexSwapCallback, StdUtils {
     function _recordWindow(bool stablecoinInput) internal {
         if (!ghost_callbackFired) return;
         ghost_windowChecks++;
-        (uint256 postStockR, uint256 postScR) = pool.getReserves();
+        uint256 postStockRaw = stock.balanceOf(address(pool));
+        uint256 postScRaw = stablecoin.balanceOf(address(pool));
         // input token = stablecoin for a buy, stock for a sell.
-        uint256 midInputR = stablecoinInput ? ghost_midScR : ghost_midStockR;
-        uint256 postInputR = stablecoinInput ? postScR : postStockR;
+        uint256 midInputR = stablecoinInput ? ghost_midScRaw : ghost_midStockRaw;
+        uint256 postInputR = stablecoinInput ? postScRaw : postStockRaw;
         if (midInputR < postInputR) {
             ghost_windowPresentCount++;
         } else {
@@ -293,6 +305,13 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
     // arrives. This is EXPECTED per R2-C-13; we assert the window is never
     // absent (mid-swap view is always the deflated one).
     // ============================================================
+    function invariant_guardedViewsNeverAnswerMidSwap() public view {
+        assertFalse(
+            handler.ghost_viewLeaked(),
+            "getReserves() answered during a swap callback"
+        );
+    }
+
     function invariant_readOnlyReentrancyWindowPresent() public view {
         assertFalse(
             handler.ghost_windowAbsent(),
@@ -329,6 +348,12 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
     }
 
     function afterInvariant() public view {
+        assertGt(handler.ghost_swapsExecuted(), 0, "campaign executed no swaps");
+        assertGt(handler.ghost_viewBlocked(), 0, "view guard never exercised");
+        assertTrue(
+            handler.ghost_probeInsideCallback(),
+            "poolOperationInProgress() did not report true mid-swap"
+        );
         console.log("handler callCount (last seq):", handler.callCount());
         console.log("swaps executed (last seq):", handler.ghost_swapsExecuted());
         console.log("window checks (last seq):", handler.ghost_windowChecks());
@@ -358,22 +383,17 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
         assertGt(handler.ghost_windowChecks(), 0, "no window observed");
         assertFalse(handler.ghost_windowAbsent(), "window absent on buy");
 
-        // getReserves() inside the callback == pre-swap sc reserve: the input
-        // stablecoin had NOT yet been pulled in (buy fees are taken in stock,
-        // so the sc reserve is otherwise untouched at the callback point).
-        assertEq(
-            handler.ghost_midScR(),
-            preScR,
-            "mid-swap sc reserve != pre-swap (input arrived too early?)"
+        // getReserves() is guarded: the callback's read reverted instead of
+        // answering with the deflated mid-swap view.
+        assertGt(handler.ghost_viewBlocked(), 0, "getReserves() was not blocked mid-swap");
+        assertFalse(handler.ghost_viewLeaked(), "getReserves() answered mid-swap");
+        assertTrue(
+            handler.ghost_probeInsideCallback(),
+            "poolOperationInProgress() must be true inside the callback"
         );
+        assertFalse(pool.poolOperationInProgress(), "probe must be false at rest");
         (, uint256 postScR) = pool.getReserves();
-        // Settled reserve is strictly HIGHER than the mid-swap view => the
-        // read-only-reentrancy window (deflated mid-swap view) is real.
-        assertGt(
-            postScR,
-            handler.ghost_midScR(),
-            "post sc reserve not > mid -> window missing"
-        );
+        assertGt(postScR, preScR, "settled sc reserve did not grow after the buy");
         // Same story on RAW balances: the OUTPUT stock already left the pool
         // during the callback (mid raw stock < pre raw stock), while the INPUT
         // stablecoin had not yet arrived (mid raw sc == pre raw sc).
@@ -397,16 +417,12 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
         handler.sellExactIn(0, 50 ether);
 
         assertFalse(handler.ghost_windowAbsent(), "window absent on sell");
-        assertEq(
-            handler.ghost_midStockR(),
-            preStockR2,
-            "mid-swap stock reserve != pre-swap (input arrived too early?)"
-        );
+        assertFalse(handler.ghost_viewLeaked(), "getReserves() answered mid-swap");
         (uint256 postStockR2, ) = pool.getReserves();
         assertGt(
             postStockR2,
-            handler.ghost_midStockR(),
-            "post stock reserve not > mid -> window missing"
+            preStockR2,
+            "settled stock reserve did not grow after the sell"
         );
         // OUTPUT stablecoin already left the pool during the callback.
         assertLt(
