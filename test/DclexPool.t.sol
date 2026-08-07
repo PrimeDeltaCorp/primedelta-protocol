@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {InvalidDID} from "dclex-blockchain/contracts/libs/Model.sol";
@@ -1310,7 +1311,7 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testAddLiquidityRevertsWhenNotInitialized() public {
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
-        aaplPool.addLiquidity(1);
+        aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
     }
 
     function testAddLiquidityMintsGivenAmountOfLiquidityTokens() public {
@@ -1318,7 +1319,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         uint256 totalBalanceBefore = aaplPool.totalSupply();
         uint256 balanceBefore = aaplPool.balanceOf(address(this));
-        aaplPool.addLiquidity(1);
+        aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
         uint256 totalBalanceAfter = aaplPool.totalSupply();
         uint256 balanceAfter = aaplPool.balanceOf(address(this));
         assertEq(totalBalanceAfter - totalBalanceBefore, 1);
@@ -1326,7 +1327,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         totalBalanceBefore = aaplPool.totalSupply();
         balanceBefore = aaplPool.balanceOf(address(this));
-        aaplPool.addLiquidity(5000);
+        aaplPool.addLiquidity(5000, type(uint256).max, type(uint256).max, block.timestamp);
         totalBalanceAfter = aaplPool.totalSupply();
         balanceAfter = aaplPool.balanceOf(address(this));
         assertEq(totalBalanceAfter - totalBalanceBefore, 5000);
@@ -1338,13 +1339,13 @@ contract DclexPoolTest is Test, TestBalance {
 
         uint256 balanceBefore = aaplPool.balanceOf(USER_1);
         vm.prank(USER_1);
-        aaplPool.addLiquidity(1);
+        aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
         uint256 balanceAfter = aaplPool.balanceOf(USER_1);
         assertEq(balanceAfter - balanceBefore, 1);
 
         balanceBefore = aaplPool.balanceOf(USER_2);
         vm.prank(USER_2);
-        aaplPool.addLiquidity(1);
+        aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
         balanceAfter = aaplPool.balanceOf(USER_2);
         assertEq(balanceAfter - balanceBefore, 1);
     }
@@ -1356,15 +1357,15 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 50 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(1 ether); // total share requested: 1%
+        aaplPool.addLiquidity(1 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 1%
         uint256 stocksTaken1 = balanceBefore -
             aaplStock.balanceOf(address(this));
 
-        aaplPool.addLiquidity(99 ether);
+        aaplPool.addLiquidity(99 ether, type(uint256).max, type(uint256).max, block.timestamp);
         setPoolStockBalance(aaplPool, 50 ether);
 
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(100 ether); // total share requested: 50%
+        aaplPool.addLiquidity(100 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 50%
         uint256 stocksTaken2 = balanceBefore -
             aaplStock.balanceOf(address(this));
 
@@ -1372,7 +1373,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 50 ether);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(240 ether); // total share requested: 80%
+        aaplPool.addLiquidity(240 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 80%
         uint256 stocksTaken3 = balanceBefore -
             aaplStock.balanceOf(address(this));
 
@@ -1389,21 +1390,21 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0.05 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(2 ether); // total share requested: 100%
+        aaplPool.addLiquidity(2 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         uint256 balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 0.05 ether);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0.1 ether);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(4 ether); // total share requested: 100%
+        aaplPool.addLiquidity(4 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 0.1 ether);
 
-        aaplPool.addLiquidity(16 ether);
+        aaplPool.addLiquidity(16 ether, type(uint256).max, type(uint256).max, block.timestamp);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0.6 ether);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(24 ether); // total share requested: 100%
+        aaplPool.addLiquidity(24 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 0.6 ether);
 
@@ -1412,7 +1413,7 @@ contract DclexPoolTest is Test, TestBalance {
         /* TODO: fix this test
         assertEq(aaplStock.balanceOf(address(aaplPool)), 1);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.addLiquidity(48); // total share requested: 100%
+        aaplPool.addLiquidity(48, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 1); */
     }
@@ -1424,20 +1425,20 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplPool.totalSupply(), 100 ether);
 
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(1 ether); // total share requested: 1%
+        aaplPool.addLiquidity(1 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 1%
         uint256 usdcTaken1 = balanceBefore - usdcMock.balanceOf(address(this));
 
-        aaplPool.addLiquidity(99 ether);
+        aaplPool.addLiquidity(99 ether, type(uint256).max, type(uint256).max, block.timestamp);
         setPoolUSDCBalance(aaplPool, 50e6);
 
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(100 ether); // total share requested: 50%
+        aaplPool.addLiquidity(100 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 50%
         uint256 usdcTaken2 = balanceBefore - usdcMock.balanceOf(address(this));
 
         setPoolUSDCBalance(aaplPool, 50e6);
 
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(240 ether); // total share requested: 80%
+        aaplPool.addLiquidity(240 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 80%
         uint256 usdcTaken3 = balanceBefore - usdcMock.balanceOf(address(this));
 
         assertNotEq(usdcTaken1, 0);
@@ -1453,21 +1454,21 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 1e6);
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(2 ether); // total share requested: 100%
+        aaplPool.addLiquidity(2 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         uint256 balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 1e6);
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 2e6);
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(4 ether); // total share requested: 100%
+        aaplPool.addLiquidity(4 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 2e6);
 
-        aaplPool.addLiquidity(16 ether);
+        aaplPool.addLiquidity(16 ether, type(uint256).max, type(uint256).max, block.timestamp);
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 12e6);
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(24 ether); // total share requested: 100%
+        aaplPool.addLiquidity(24 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 12e6);
 
@@ -1475,7 +1476,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 1);
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.addLiquidity(48 ether); // total share requested: 100%
+        aaplPool.addLiquidity(48 ether, type(uint256).max, type(uint256).max, block.timestamp); // total share requested: 100%
         balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceBefore - balanceAfter, 1);
     }
@@ -1485,7 +1486,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         uint256 totalBalanceBefore = aaplPool.totalSupply();
         uint256 balanceBefore = aaplPool.balanceOf(address(this));
-        aaplPool.removeLiquidity(1);
+        aaplPool.removeLiquidity(1, 0, 0, block.timestamp);
         uint256 totalBalanceAfter = aaplPool.totalSupply();
         uint256 balanceAfter = aaplPool.balanceOf(address(this));
         assertEq(totalBalanceBefore - totalBalanceAfter, 1);
@@ -1493,7 +1494,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         totalBalanceBefore = aaplPool.totalSupply();
         balanceBefore = aaplPool.balanceOf(address(this));
-        aaplPool.removeLiquidity(5000);
+        aaplPool.removeLiquidity(5000, 0, 0, block.timestamp);
         totalBalanceAfter = aaplPool.totalSupply();
         balanceAfter = aaplPool.balanceOf(address(this));
         assertEq(totalBalanceBefore - totalBalanceAfter, 5000);
@@ -1506,12 +1507,12 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
 
         vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
-        aaplPool.removeLiquidity(200 ether + 1);
+        aaplPool.removeLiquidity(200 ether + 1, 0, 0, block.timestamp);
 
         vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
-        aaplPool.removeLiquidity(201 ether);
+        aaplPool.removeLiquidity(201 ether, 0, 0, block.timestamp);
 
-        aaplPool.removeLiquidity(200 ether);
+        aaplPool.removeLiquidity(200 ether, 0, 0, block.timestamp);
         assertEq(aaplPool.balanceOf(address(this)), 0);
     }
 
@@ -1519,17 +1520,17 @@ contract DclexPoolTest is Test, TestBalance {
         vm.prank(USER_1);
         aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
         vm.prank(USER_2);
-        aaplPool.addLiquidity(1);
+        aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
 
         uint256 balanceBefore = aaplPool.balanceOf(USER_1);
         vm.prank(USER_1);
-        aaplPool.removeLiquidity(1);
+        aaplPool.removeLiquidity(1, 0, 0, block.timestamp);
         uint256 balanceAfter = aaplPool.balanceOf(USER_1);
         assertEq(balanceBefore - balanceAfter, 1);
 
         balanceBefore = aaplPool.balanceOf(USER_2);
         vm.prank(USER_2);
-        aaplPool.removeLiquidity(1);
+        aaplPool.removeLiquidity(1, 0, 0, block.timestamp);
         balanceAfter = aaplPool.balanceOf(USER_2);
         assertEq(balanceBefore - balanceAfter, 1);
     }
@@ -1540,23 +1541,23 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
 
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(2 ether); // total share burned: 1%
+        aaplPool.removeLiquidity(2 ether, 0, 0, block.timestamp); // total share burned: 1%
         uint256 stocksReceived = aaplStock.balanceOf(address(this)) -
             balanceBefore;
         assertEq(stocksReceived, 1 ether);
 
-        aaplPool.addLiquidity(2 ether);
+        aaplPool.addLiquidity(2 ether, type(uint256).max, type(uint256).max, block.timestamp);
         setPoolStockBalance(aaplPool, 100 ether);
 
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(100 ether); // total share burned: 50%
+        aaplPool.removeLiquidity(100 ether, 0, 0, block.timestamp); // total share burned: 50%
         stocksReceived = aaplStock.balanceOf(address(this)) - balanceBefore;
         assertEq(stocksReceived, 50 ether);
 
         setPoolStockBalance(aaplPool, 100 ether);
 
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(80 ether); // total share burned: 80%
+        aaplPool.removeLiquidity(80 ether, 0, 0, block.timestamp); // total share burned: 80%
         stocksReceived = aaplStock.balanceOf(address(this)) - balanceBefore;
         assertEq(stocksReceived, 80 ether);
     }
@@ -1569,21 +1570,21 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 5 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(20 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(20 ether, 0, 0, block.timestamp); // total share requested: 10%
         uint256 balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 0.5 ether);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 4.5 ether);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(18 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(18 ether, 0, 0, block.timestamp); // total share requested: 10%
         balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 0.45 ether);
 
-        aaplPool.removeLiquidity(2 ether);
+        aaplPool.removeLiquidity(2 ether, 0, 0, block.timestamp);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 4 ether);
         balanceBefore = aaplStock.balanceOf(address(this));
-        aaplPool.removeLiquidity(16 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(16 ether, 0, 0, block.timestamp); // total share requested: 10%
         balanceAfter = aaplStock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 0.4 ether);
     }
@@ -1595,7 +1596,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 100e6);
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(4 ether); // total share burned: 2%
+        aaplPool.removeLiquidity(4 ether, 0, 0, block.timestamp); // total share burned: 2%
         uint256 usdcReceived = usdcMock.balanceOf(address(this)) -
             balanceBefore;
         assertEq(usdcReceived, 2e6);
@@ -1603,15 +1604,15 @@ contract DclexPoolTest is Test, TestBalance {
         setPoolUSDCBalance(aaplPool, 100e6);
 
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(98 ether); // total share requested: 50%
+        aaplPool.removeLiquidity(98 ether, 0, 0, block.timestamp); // total share requested: 50%
         usdcReceived = usdcMock.balanceOf(address(this)) - balanceBefore;
         assertEq(usdcReceived, 50e6);
 
-        aaplPool.addLiquidity(102 ether);
+        aaplPool.addLiquidity(102 ether, type(uint256).max, type(uint256).max, block.timestamp);
         setPoolUSDCBalance(aaplPool, 100e6);
 
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(160 ether); // total share requested: 80%
+        aaplPool.removeLiquidity(160 ether, 0, 0, block.timestamp); // total share requested: 80%
         usdcReceived = usdcMock.balanceOf(address(this)) - balanceBefore;
         assertEq(usdcReceived, 80e6);
     }
@@ -1623,21 +1624,21 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.initialize(5 ether, 100e6, PRICE_DATA);
 
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(20 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(20 ether, 0, 0, block.timestamp); // total share requested: 10%
         uint256 balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 10e6);
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 90e6);
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(18 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(18 ether, 0, 0, block.timestamp); // total share requested: 10%
         balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 9e6);
 
-        aaplPool.removeLiquidity(2 ether);
+        aaplPool.removeLiquidity(2 ether, 0, 0, block.timestamp);
         setPoolUSDCBalance(aaplPool, 80e6);
 
         balanceBefore = usdcMock.balanceOf(address(this));
-        aaplPool.removeLiquidity(16 ether); // total share requested: 10%
+        aaplPool.removeLiquidity(16 ether, 0, 0, block.timestamp); // total share requested: 10%
         balanceAfter = usdcMock.balanceOf(address(this));
         assertEq(balanceAfter - balanceBefore, 8e6);
     }
@@ -2738,12 +2739,12 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactOutput(false, 20e6, address(this), "", PRICE_DATA);
 
         recordBalance(address(aaplStock), address(this));
-        aaplPool.addLiquidity(200 ether);
+        aaplPool.addLiquidity(200 ether, type(uint256).max, type(uint256).max, block.timestamp);
         assertBalanceDecreased(122000000000000000001);
 
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        aaplPool.removeLiquidity(400 ether);
+        aaplPool.removeLiquidity(400 ether, 0, 0, block.timestamp);
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0);
         assertEq(usdcMock.balanceOf(address(aaplPool)), 0);
     }
@@ -2759,12 +2760,12 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactOutput(true, 20 ether, address(this), "", PRICE_DATA); // 0.2 USDC protocol fee
 
         recordBalance(address(usdcMock), address(this));
-        aaplPool.addLiquidity(200 ether); // pool has 121.8 USDC of reserves and 0.2 USDC collected protocol fee
+        aaplPool.addLiquidity(200 ether, type(uint256).max, type(uint256).max, block.timestamp); // pool has 121.8 USDC of reserves and 0.2 USDC collected protocol fee
         assertBalanceDecreased(122000001);
 
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        aaplPool.removeLiquidity(400 ether);
+        aaplPool.removeLiquidity(400 ether, 0, 0, block.timestamp);
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0);
         assertEq(usdcMock.balanceOf(address(aaplPool)), 0);
     }
@@ -2779,7 +2780,7 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.swapExactOutput(false, 30e6, address(this), "", PRICE_DATA);
         aaplPool.swapExactOutput(true, 50 ether, address(this), "", PRICE_DATA);
 
-        aaplPool.removeLiquidity(200 ether);
+        aaplPool.removeLiquidity(200 ether, 0, 0, block.timestamp);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 333333333333333333);
         assertEq(usdcMock.balanceOf(address(aaplPool)), 555556);
@@ -2817,11 +2818,11 @@ contract DclexPoolTest is Test, TestBalance {
 
         vm.expectEmit(address(aaplPool));
         emit LiquidityAdded(10 ether, 5 ether, 5e6);
-        aaplPool.addLiquidity(10 ether);
+        aaplPool.addLiquidity(10 ether, type(uint256).max, type(uint256).max, block.timestamp);
 
         vm.expectEmit(address(nvdaPool));
         emit LiquidityAdded(20 ether, 10 ether, 10e6);
-        nvdaPool.addLiquidity(20 ether);
+        nvdaPool.addLiquidity(20 ether, type(uint256).max, type(uint256).max, block.timestamp);
     }
 
     function testRemoveLiquidityEmitsLiquidityRemovedEvent() external {
@@ -2830,11 +2831,11 @@ contract DclexPoolTest is Test, TestBalance {
 
         vm.expectEmit(address(aaplPool));
         emit LiquidityRemoved(10 ether, 5 ether, 5e6);
-        aaplPool.removeLiquidity(10 ether);
+        aaplPool.removeLiquidity(10 ether, 0, 0, block.timestamp);
 
         vm.expectEmit(address(nvdaPool));
         emit LiquidityRemoved(20 ether, 10 ether, 10e6);
-        nvdaPool.removeLiquidity(20 ether);
+        nvdaPool.removeLiquidity(20 ether, 0, 0, block.timestamp);
     }
 
     function testSwapExactInputEmitsSwapExecutedEvent()
@@ -3193,7 +3194,7 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testRemoveLiquidityRevertsBeforeInitialize() public {
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
-        aaplPool.removeLiquidity(1);
+        aaplPool.removeLiquidity(1, 0, 0, block.timestamp);
     }
 
     function testInitializeRevertsOnZeroAmounts() public {
@@ -3209,7 +3210,7 @@ contract DclexPoolTest is Test, TestBalance {
         // liquidityAmount=0 → both legs round to 0; the guard prevents
         // minting LP for nothing.
         vm.expectRevert(DclexPool.DclexPool__ZeroLiquidityDeposit.selector);
-        aaplPool.addLiquidity(0);
+        aaplPool.addLiquidity(0, type(uint256).max, type(uint256).max, block.timestamp);
     }
 
     function testGetReservesReturnsZeroForFreshPool() public view {
@@ -3293,7 +3294,7 @@ contract DclexPoolTest is Test, TestBalance {
         // (NOT by the previously collected fee — those stay credited to the
         // protocol regardless of LP minting).
         uint256 lpToMint = supply0 / 10;
-        aaplPool.addLiquidity(lpToMint);
+        aaplPool.addLiquidity(lpToMint, type(uint256).max, type(uint256).max, block.timestamp);
         (uint256 r1Stock, uint256 r1Usdc) = aaplPool.getReserves();
         assertGt(r1Stock, r0Stock);
         assertGt(r1Usdc, r0Usdc);
@@ -3303,7 +3304,7 @@ contract DclexPoolTest is Test, TestBalance {
         // while removeLiquidity floors it, so a mint+burn round trip can leave
         // one 6-decimal unit (1e12 in 18-decimal reserve terms) behind. That
         // dust always accrues to the pool, never to the departing LP.
-        aaplPool.removeLiquidity(lpToMint);
+        aaplPool.removeLiquidity(lpToMint, 0, 0, block.timestamp);
         (uint256 r2Stock, uint256 r2Usdc) = aaplPool.getReserves();
         assertApproxEqAbs(r2Stock, r0Stock, 1);
         assertGe(r2Usdc, r0Usdc);
@@ -3320,7 +3321,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testRemoveLiquidityResetsInitializedWhenLastLPExits() public {
         aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
-        aaplPool.removeLiquidity(lp);
+        aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         assertEq(aaplPool.totalSupply(), 0);
         // Initialize must succeed now — pool was de-initialized on last burn.
         aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
@@ -3337,21 +3338,21 @@ contract DclexPoolTest is Test, TestBalance {
     function testAddLiquidityRevertsAfterFullBurnUntilReinit() public {
         aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
-        aaplPool.removeLiquidity(lp);
+        aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         // Pool is now uninitialized — addLiquidity routes through the same
         // !initialized branch and reverts.
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
-        aaplPool.addLiquidity(1 ether);
+        aaplPool.addLiquidity(1 ether, type(uint256).max, type(uint256).max, block.timestamp);
 
         // After re-init, addLiquidity works again.
         aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
-        aaplPool.addLiquidity(10 ether);
+        aaplPool.addLiquidity(10 ether, type(uint256).max, type(uint256).max, block.timestamp);
     }
 
     function testSwapRevertsAfterFullBurnUntilReinit() public {
         aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
-        aaplPool.removeLiquidity(lp);
+        aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA);
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
@@ -3374,7 +3375,7 @@ contract DclexPoolTest is Test, TestBalance {
         assertGt(usdcFeesBefore, 0);
 
         // Burn all LP — pool de-initializes but protocol fees remain accounted.
-        aaplPool.removeLiquidity(aaplPool.totalSupply());
+        aaplPool.removeLiquidity(aaplPool.totalSupply(), 0, 0, block.timestamp);
         (uint256 aaplFeesMid, uint256 usdcFeesMid) = aaplPool.collectedProtocolFees();
         assertEq(aaplFeesMid, aaplFeesBefore);
         assertEq(usdcFeesMid, usdcFeesBefore);
@@ -3491,5 +3492,74 @@ contract DclexPoolTest is Test, TestBalance {
     {
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.25 ether);
         _assertPathParity(5 ether);
+    }
+
+    function testAddLiquidityRevertsWhenCompositionExceedsBounds()
+        public
+        liquidityMinted
+    {
+        (uint256 stockReserve, uint256 stablecoinReserve) = aaplPool.getReserves();
+        uint256 supply = aaplPool.totalSupply();
+        uint256 lp = supply / 10;
+        uint256 expectedStock = Math.mulDiv(lp, stockReserve, supply, Math.Rounding.Ceil);
+        uint256 expectedStable = Math.ceilDiv(
+            Math.mulDiv(lp, stablecoinReserve, supply, Math.Rounding.Ceil), 1e12
+        );
+
+        vm.expectRevert(DclexPool.DclexPool__ExcessiveInputAmount.selector);
+        aaplPool.addLiquidity(lp, expectedStock - 1, type(uint256).max, block.timestamp);
+
+        vm.expectRevert(DclexPool.DclexPool__ExcessiveInputAmount.selector);
+        aaplPool.addLiquidity(lp, type(uint256).max, expectedStable - 1, block.timestamp);
+
+        aaplPool.addLiquidity(lp, expectedStock, expectedStable, block.timestamp);
+    }
+
+    function testRemoveLiquidityRevertsWhenOutputBelowBounds()
+        public
+        liquidityMinted
+    {
+        uint256 lp = aaplPool.balanceOf(address(this)) / 10;
+        (uint256 stockReserve, uint256 stablecoinReserve) = aaplPool.getReserves();
+        uint256 supply = aaplPool.totalSupply();
+        uint256 expectedStock = Math.mulDiv(lp, stockReserve, supply);
+        uint256 expectedStable = Math.mulDiv(lp, stablecoinReserve, supply) / 1e12;
+
+        vm.expectRevert(DclexPool.DclexPool__InsufficientOutputAmount.selector);
+        aaplPool.removeLiquidity(lp, expectedStock + 1, 0, block.timestamp);
+
+        vm.expectRevert(DclexPool.DclexPool__InsufficientOutputAmount.selector);
+        aaplPool.removeLiquidity(lp, 0, expectedStable + 1, block.timestamp);
+
+        aaplPool.removeLiquidity(lp, expectedStock, expectedStable, block.timestamp);
+    }
+
+    function testLiquidityFunctionsRespectDeadline() public liquidityMinted {
+        uint256 past = block.timestamp - 1;
+
+        vm.expectRevert(DclexPool.DclexPool__DeadlineExpired.selector);
+        aaplPool.addLiquidity(1 ether, type(uint256).max, type(uint256).max, past);
+
+        vm.expectRevert(DclexPool.DclexPool__DeadlineExpired.selector);
+        aaplPool.removeLiquidity(1 ether, 0, 0, past);
+    }
+
+    function testAddLiquidityBoundsProtectAgainstFrontRunSwap()
+        public
+        feeCurve(0.1 ether, 0)
+        liquidityMinted
+    {
+        (uint256 stockReserve, uint256 stablecoinReserve) = aaplPool.getReserves();
+        uint256 supply = aaplPool.totalSupply();
+        uint256 lp = supply / 10;
+        uint256 intendedStock = Math.mulDiv(lp, stockReserve, supply, Math.Rounding.Ceil);
+        uint256 intendedStable = Math.ceilDiv(
+            Math.mulDiv(lp, stablecoinReserve, supply, Math.Rounding.Ceil), 1e12
+        );
+
+        aaplPool.swapExactInput(true, 2000e6, address(this), "", PRICE_DATA);
+
+        vm.expectRevert(DclexPool.DclexPool__ExcessiveInputAmount.selector);
+        aaplPool.addLiquidity(lp, intendedStock, intendedStable, block.timestamp);
     }
 }

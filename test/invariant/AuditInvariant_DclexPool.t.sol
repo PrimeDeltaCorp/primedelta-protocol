@@ -316,7 +316,7 @@ contract DclexPoolHandler is IDclexSwapCallback, StdUtils {
         lpAmount = bound(lpAmount, 0, supply / 2 + 1);
         uint256 stockBefore = stock.balanceOf(address(this));
         uint256 scBefore = stablecoin.balanceOf(address(this));
-        try pool.addLiquidity(lpAmount) {
+        try pool.addLiquidity(lpAmount, type(uint256).max, type(uint256).max, block.timestamp) {
             ghost_lpStockDeposited += (stockBefore - stock.balanceOf(address(this)));
             ghost_lpScDeposited += (scBefore - stablecoin.balanceOf(address(this)));
         } catch {}
@@ -330,7 +330,7 @@ contract DclexPoolHandler is IDclexSwapCallback, StdUtils {
         lpAmount = bound(lpAmount, 0, bal);
         uint256 stockBefore = stock.balanceOf(address(this));
         uint256 scBefore = stablecoin.balanceOf(address(this));
-        try pool.removeLiquidity(lpAmount) {
+        try pool.removeLiquidity(lpAmount, 0, 0, block.timestamp) {
             ghost_lpStockWithdrawn += (stock.balanceOf(address(this)) - stockBefore);
             ghost_lpScWithdrawn += (stablecoin.balanceOf(address(this)) - scBefore);
         } catch {}
@@ -458,7 +458,7 @@ contract AuditInvariant_DclexPool is DclexPoolTest {
         vm.startPrank(address(handler));
         // mint LP equal to ~ a quarter of current supply
         uint256 supply = pool.totalSupply();
-        pool.addLiquidity(supply / 4);
+        pool.addLiquidity(supply / 4, type(uint256).max, type(uint256).max, block.timestamp);
         vm.stopPrank();
 
         // Target only the handler for the fuzz campaign, and only its action
