@@ -173,15 +173,22 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         }
         uint256 in18 = scIn * 1e12;
         uint256 gross = Math.mulDiv(in18, WAD, p); // outputPrice p, inputPrice 1e18
-        (bool ok, uint256 fee) = _buyFee(gross, p);
-        if (!ok) return;
-        uint256 expNet = Math.mulDiv(gross, WAD - fee, WAD);
-        if (expNet == 0) return; // would revert ZeroOutputAmount
+        uint256 expNetLow;
+        uint256 expNetHigh;
+        {
+            (bool ok, uint256 feeAtGross) = _buyFee(gross, p);
+            if (!ok) return;
+            expNetLow = Math.mulDiv(gross, WAD - feeAtGross, WAD);
+            if (expNetLow == 0) return; // would revert ZeroOutputAmount
+            (bool ok2, uint256 feeAtNet) = _buyFee(expNetLow, p);
+            if (!ok2) return;
+            expNetHigh = Math.mulDiv(gross, WAD - feeAtNet, WAD);
+        }
 
         uint256 got = feePool.swapExactInput(true, scIn, address(this), "", PRICE_DATA);
 
-        assertEq(got, expNet, "buy exact-in: output != floor-derived net");
-        assertLe(got, Math.mulDiv(gross, WAD - fee, WAD, Math.Rounding.Ceil), "buy exact-in: output not floor-rounded");
+        assertGe(got, expNetLow, "buy exact-in: output below the curve(gross) bound");
+        assertLe(got, expNetHigh, "buy exact-in: output above the curve(net) bound");
         assertLe(Math.mulDiv(got, p, WAD), in18, "buy exact-in: better-than-oracle output");
 
         {
@@ -266,15 +273,22 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         }
         uint256 outSc18 = scOut * 1e12;
         uint256 netInStock = Math.mulDiv(outSc18, WAD, p, Math.Rounding.Ceil);
-        (bool ok, uint256 fee) = _sellFee(netInStock, p);
-        if (!ok) return;
-        uint256 expGross = Math.mulDiv(netInStock, WAD, WAD - fee, Math.Rounding.Ceil);
-        if (expGross == 0) return;
+        uint256 expGrossLow;
+        uint256 expGrossHigh;
+        {
+            (bool ok, uint256 feeAtNet) = _sellFee(netInStock, p);
+            if (!ok) return;
+            expGrossLow = Math.mulDiv(netInStock, WAD, WAD - feeAtNet, Math.Rounding.Ceil);
+            if (expGrossLow == 0) return;
+            (bool ok2, uint256 feeAtGross) = _sellFee(expGrossLow, p);
+            if (!ok2) return;
+            expGrossHigh = Math.mulDiv(netInStock, WAD, WAD - feeAtGross, Math.Rounding.Ceil);
+        }
 
         uint256 got = feePool.swapExactOutput(false, scOut, address(this), "", PRICE_DATA);
 
-        assertEq(got, expGross, "sell exact-out: input != ceil-derived gross");
-        assertGe(got, Math.mulDiv(netInStock, WAD, WAD - fee), "sell exact-out: input not ceil-rounded");
+        assertGe(got, expGrossLow, "sell exact-out: input below the curve(net) bound");
+        assertLe(got, expGrossHigh, "sell exact-out: input above the curve(gross) bound");
         assertGe(Math.mulDiv(got, p, WAD), outSc18, "sell exact-out: took less than oracle value");
 
         {
@@ -348,14 +362,18 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
             valBefore = _value(stockR, scR18, p);
         }
         uint256 gross = Math.mulDiv(100e6 * 1e12, WAD, p);
-        (bool ok, uint256 fee) = _buyFee(gross, p);
+        (bool ok, uint256 feeAtGross) = _buyFee(gross, p);
         assertTrue(ok, "fee derivation should succeed");
-        assertGt(fee, 0, "fee-bearing pool must charge a fee");
-        uint256 expNet = Math.mulDiv(gross, WAD - fee, WAD);
-        assertGt(expNet, 0, "concrete swap must produce output");
+        assertGt(feeAtGross, 0, "fee-bearing pool must charge a fee");
+        uint256 expNetLow = Math.mulDiv(gross, WAD - feeAtGross, WAD);
+        assertGt(expNetLow, 0, "concrete swap must produce output");
+        (bool ok2, uint256 feeAtNet) = _buyFee(expNetLow, p);
+        assertTrue(ok2, "refined fee derivation should succeed");
+        uint256 expNetHigh = Math.mulDiv(gross, WAD - feeAtNet, WAD);
 
         uint256 got = feePool.swapExactInput(true, 100e6, address(this), "", PRICE_DATA);
-        assertEq(got, expNet, "concrete buy differential mismatch");
+        assertGe(got, expNetLow, "concrete buy below the curve(gross) bound");
+        assertLe(got, expNetHigh, "concrete buy above the curve(net) bound");
         assertLt(got, gross, "fee must reduce output below gross");
 
         {

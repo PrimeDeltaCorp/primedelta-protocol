@@ -162,10 +162,6 @@ contract DclexPoolTest is Test, TestBalance {
         vm.stopPrank();
     }
 
-    /// Applies a split the way the runbook requires: the post-split price lands
-    /// INSIDE the pause window, so no swap can ever observe a fresh multiplier
-    /// combined with a pre-split price. Updating the price after the unpause
-    /// leaves exactly the epoch-mismatch window PDLT-001-R01 describes.
     function applySplit(
         string memory symbol,
         uint256 numerator,
@@ -2236,7 +2232,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertInputFeeRate(
-            0.04 ether,
+            0.040869565217391304 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2256,7 +2252,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertInputFeeRate(
-            0.045 ether,
+            0.046901408450704225 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2276,7 +2272,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertInputFeeRate(
-            0.06 ether,
+            0.069473684210526316 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2301,7 +2297,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertOutputFeeRate(
-            0.04 ether,
+            0.039230769230769230 ether,
             uint256(getBalanceChange()),
             swapSizeInStocks
         );
@@ -2321,7 +2317,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertOutputFeeRate(
-            0.045 ether,
+            0.043419203747072599 ether,
             uint256(getBalanceChange()),
             swapSizeInStocks
         );
@@ -2341,7 +2337,7 @@ contract DclexPoolTest is Test, TestBalance {
             PRICE_DATA
         );
         assertOutputFeeRate(
-            0.06 ether,
+            0.053898305084745762 ether,
             uint256(getBalanceChange()),
             swapSizeInStocks
         );
@@ -3446,5 +3442,54 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.expectRevert(DclexPool.DclexPool__FeeRateTooHigh.selector);
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
+    }
+
+    function _assertPathParity(uint256 stockOut) private {
+        uint256 snap = vm.snapshotState();
+        uint256 paid = aaplPool.swapExactOutput(
+            true, stockOut, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+
+        uint256 received = aaplPool.swapExactInput(
+            true, paid, address(this), "", PRICE_DATA
+        );
+
+        assertGe(
+            received,
+            stockOut,
+            "exact-output overcharged relative to exact-input"
+        );
+        assertApproxEqRel(
+            received,
+            stockOut,
+            0.00002e18,
+            "the two paths must price an identical trade identically"
+        );
+    }
+
+    function testPathParityOnMildlySensitiveCurve()
+        public
+        feeCurve(0.03 ether, 0.01 ether)
+        liquidityMinted
+    {
+        _assertPathParity(5 ether);
+    }
+
+    function testPathParityOnSteepCurve()
+        public
+        feeCurve(0.05 ether, 0.04 ether)
+        liquidityMinted
+    {
+        _assertPathParity(20 ether);
+    }
+
+    function testPathParityOnImbalancedPoolSteepCurve()
+        public
+        feeCurve(0.05 ether, 0.04 ether)
+        liquidityMinted
+    {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.25 ether);
+        _assertPathParity(5 ether);
     }
 }

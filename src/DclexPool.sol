@@ -246,9 +246,18 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
             uint256 grossOutputTokenAmount = Math.mulDiv(
                 exactInputAmount, inputTokenPrice, outputTokenPrice
             );
-            uint256 feeRate = stablecoinInput
-                ? getBuyFeeRate(grossOutputTokenAmount, stockTokenPrice)
-                : getSellFeeRate(exactInputAmount, stockTokenPrice);
+            uint256 feeRate;
+            if (stablecoinInput) {
+                uint256 provisionalRate = getBuyFeeRate(
+                    grossOutputTokenAmount, stockTokenPrice
+                );
+                feeRate = getBuyFeeRate(
+                    Math.mulDiv(grossOutputTokenAmount, 1e18 - provisionalRate, 1e18),
+                    stockTokenPrice
+                );
+            } else {
+                feeRate = getSellFeeRate(exactInputAmount, stockTokenPrice);
+            }
 
             netOutputTokenAmount = Math.mulDiv(
                 grossOutputTokenAmount, 1e18 - feeRate, 1e18
@@ -331,9 +340,21 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
             uint256 netInputTokenAmount = Math.mulDiv(
                 exactOutputAmount, outputTokenPrice, inputTokenPrice, Math.Rounding.Ceil
             );
-            uint256 feeRate = stablecoinInput
-                ? getBuyFeeRate(exactOutputAmount, stockTokenPrice)
-                : getSellFeeRate(netInputTokenAmount, stockTokenPrice);
+            uint256 feeRate;
+            if (stablecoinInput) {
+                feeRate = getBuyFeeRate(exactOutputAmount, stockTokenPrice);
+            } else {
+                uint256 provisionalRate = getSellFeeRate(
+                    netInputTokenAmount, stockTokenPrice
+                );
+                if (provisionalRate >= 1e18) revert DclexPool__FeeRateTooHigh();
+                feeRate = getSellFeeRate(
+                    Math.mulDiv(
+                        netInputTokenAmount, 1e18, 1e18 - provisionalRate, Math.Rounding.Ceil
+                    ),
+                    stockTokenPrice
+                );
+            }
             if (feeRate >= 1e18) revert DclexPool__FeeRateTooHigh();
             grossInputTokenAmount = Math.mulDiv(
                 netInputTokenAmount, 1e18, 1e18 - feeRate, Math.Rounding.Ceil
