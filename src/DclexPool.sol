@@ -34,6 +34,7 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     error DclexPool__ProtocolFeeRateTooHigh();
     error DclexPool__InvalidPriceOrExponent();
     error DclexPool__FeeCurveOutOfBounds();
+    error DclexPool__FeeRateTooHigh();
     error DclexPool__InvalidStablecoinDecimals();
     error DclexPool__ZeroAddress();
 
@@ -333,8 +334,9 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
             uint256 feeRate = stablecoinInput
                 ? getBuyFeeRate(exactOutputAmount, stockTokenPrice)
                 : getSellFeeRate(netInputTokenAmount, stockTokenPrice);
+            if (feeRate >= 1e18) revert DclexPool__FeeRateTooHigh();
             grossInputTokenAmount = Math.mulDiv(
-                netInputTokenAmount, 1e18 + feeRate, 1e18, Math.Rounding.Ceil
+                netInputTokenAmount, 1e18, 1e18 - feeRate, Math.Rounding.Ceil
             );
             if (stablecoinInput) {
                 collectedProtocolFeesStablecoin += Math.mulDiv(

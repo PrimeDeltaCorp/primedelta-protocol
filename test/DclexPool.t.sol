@@ -364,7 +364,7 @@ contract DclexPoolTest is Test, TestBalance {
         uint256 inputPaid,
         uint256 netInput
     ) public pure {
-        uint256 feeRate = (1e18 * (inputPaid - netInput)) / netInput;
+        uint256 feeRate = (1e18 * (inputPaid - netInput)) / inputPaid;
         assertApproxEqAbsDecimal(feeRate, expectedFeeRate, 0.001 ether, 18);
     }
 
@@ -391,7 +391,8 @@ contract DclexPoolTest is Test, TestBalance {
         recordBalance(address(aaplStock), address(this));
         pool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         int256 balanceChange = getBalanceChange();
-        int256 feeRate = -balanceChange - 1e18;
+        int256 grossPaid = -balanceChange;
+        int256 feeRate = ((grossPaid - 1e18) * 1e18) / grossPaid;
         assertApproxEqAbsDecimal(
             feeRate,
             int256(expectedFeeRate),
@@ -423,7 +424,8 @@ contract DclexPoolTest is Test, TestBalance {
         recordBalance(address(usdcMock), address(this));
         pool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         int256 balanceChange = getBalanceChange();
-        int256 feeRate = (-balanceChange - 1e6) * 1e12;
+        int256 grossPaid = -balanceChange;
+        int256 feeRate = ((grossPaid - 1e6) * 1e18) / grossPaid;
         assertApproxEqAbsDecimal(
             feeRate,
             int256(expectedFeeRate),
@@ -1781,12 +1783,12 @@ contract DclexPoolTest is Test, TestBalance {
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.03e6);
+        assertBalanceDecreasedApprox(1030928);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.03 ether);
+        assertBalanceDecreasedApprox(1030927835051546392);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(usdcMock), address(this));
@@ -1820,23 +1822,23 @@ contract DclexPoolTest is Test, TestBalance {
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.03e6);
+        assertBalanceDecreasedApprox(1030928);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.03 ether);
+        assertBalanceDecreasedApprox(1030927835051546392);
         _redeployAaplWithLiquidity(0.05 ether, 0.001 ether);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(usdcMock), address(this));
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.05e6);
+        assertBalanceDecreasedApprox(1052632);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
         recordBalance(address(aaplStock), address(this));
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
-        assertBalanceDecreasedApprox(1.05 ether);
+        assertBalanceDecreasedApprox(1052631578947368422);
         _redeployAaplWithLiquidity(0, 0);
 
         setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
@@ -2540,16 +2542,16 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplFees, 0);
         assertEq(usdcFees, 0);
 
-        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 0.01 AAPL fee
+        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0.01 ether);
+        assertEq(aaplFees, 11111111111111111);
         assertEq(usdcFees, 0);
 
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 0.015 AAPL fee
+        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0.01 ether + 0.015 ether);
+        assertEq(aaplFees, 11111111111111111 + 16666666666666666);
         assertEq(usdcFees, 0);
     }
 
@@ -2560,9 +2562,9 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 0.05 AAPL fee
+        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0.005 ether);
+        assertEq(aaplFees, 5263157894736842);
         assertEq(usdcFees, 0);
     }
 
@@ -2573,9 +2575,9 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA); // 0.08 AAPL fee
+        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0.008 ether);
+        assertEq(aaplFees, 8695652173913043);
         assertEq(usdcFees, 0);
     }
 
@@ -2586,9 +2588,9 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(false, 2e6, address(this), "", PRICE_DATA); // 0.1 AAPL fee
+        aaplPool.swapExactOutput(false, 2e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0.01 ether);
+        assertEq(aaplFees, 10526315789473684);
         assertEq(usdcFees, 0);
     }
 
@@ -2605,17 +2607,17 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplFees, 0);
         assertEq(usdcFees, 0);
 
-        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 0.01 USDC fee
+        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
-        assertEq(usdcFees, 0.01 ether);
+        assertEq(usdcFees, 11111111111111111);
 
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 0.015 USDC fee
+        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
-        assertEq(usdcFees, 0.01 ether + 0.015 ether);
+        assertEq(usdcFees, 11111111111111111 + 16666666666666666);
     }
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1ether()
@@ -2625,10 +2627,10 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 0.05 USDC fee
+        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
-        assertEq(usdcFees, 0.005 ether);
+        assertEq(usdcFees, 5263157894736842);
     }
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_008Fee_1ether()
@@ -2638,10 +2640,10 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA); // 0.08 USDC fee
+        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
-        assertEq(usdcFees, 0.008 ether);
+        assertEq(usdcFees, 8695652173913043);
     }
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_2ether()
@@ -2651,10 +2653,10 @@ contract DclexPoolTest is Test, TestBalance {
     {
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
-        aaplPool.swapExactOutput(true, 2 ether, address(this), "", PRICE_DATA); // 0.1 USDC fee
+        aaplPool.swapExactOutput(true, 2 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
-        assertEq(usdcFees, 0.01 ether);
+        assertEq(usdcFees, 10526315789473684);
     }
 
     function testWithdrawCollectedProtocolFeesSendsCollectedStockProtocolFees()
@@ -2665,21 +2667,21 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
-        aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA); // 3 AAPL protocol fee
+        aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, ) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 3 ether);
+        assertEq(aaplFees, 3333333333333333333);
 
         recordBalance(address(aaplStock), RECEIVER_1);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        assertBalanceIncreased(3 ether);
+        assertBalanceIncreased(3333333333333333333);
 
         aaplPool.swapExactOutput(false, 500e6, address(this), "", PRICE_DATA); // 5 AAPL protocol fee
         aaplPool.swapExactOutput(false, 100e6, address(this), "", PRICE_DATA); // 1 AAPL protocol fee
         recordBalance(address(aaplStock), RECEIVER_1);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        assertBalanceIncreased(6 ether);
+        assertBalanceIncreased(6666666666666666666);
     }
 
     function testWithdrawCollectedProtocolFeesSendsCollectedUsdcProtocolFees()
@@ -2690,21 +2692,21 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
-        aaplPool.swapExactOutput(true, 300 ether, address(this), "", PRICE_DATA); // 3 USDC protocol fee
+        aaplPool.swapExactOutput(true, 300 ether, address(this), "", PRICE_DATA);
         (, uint256 usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(usdcFees, 3 ether);
+        assertEq(usdcFees, 3333333333333333333);
 
         recordBalance(address(usdcMock), RECEIVER_1);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        assertBalanceIncreased(3e6);
+        assertBalanceIncreased(3333333);
 
-        aaplPool.swapExactOutput(true, 500 ether, address(this), "", PRICE_DATA); // 5 USDC protocol fee
-        aaplPool.swapExactOutput(true, 100 ether, address(this), "", PRICE_DATA); // 1 USDC protocol fee
+        aaplPool.swapExactOutput(true, 500 ether, address(this), "", PRICE_DATA);
+        aaplPool.swapExactOutput(true, 100 ether, address(this), "", PRICE_DATA);
         recordBalance(address(usdcMock), RECEIVER_1);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
-        assertBalanceIncreased(6e6);
+        assertBalanceIncreased(6666666);
     }
 
     function testWithdrawCollectedProtocolFeesResetsCollectedProtocolFees()
@@ -2715,11 +2717,11 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
-        aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA); // 3 AAPL protocol fee
-        aaplPool.swapExactOutput(true, 500 ether, address(this), "", PRICE_DATA); // 5 USDC protocol fee
+        aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA);
+        aaplPool.swapExactOutput(true, 500 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 3 ether);
-        assertEq(usdcFees, 5 ether);
+        assertEq(aaplFees, 3333333333333333333);
+        assertEq(usdcFees, 5555555555555555555);
 
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
@@ -2737,11 +2739,11 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
-        aaplPool.swapExactOutput(false, 20e6, address(this), "", PRICE_DATA); // 0.2 AAPL protocol fee
+        aaplPool.swapExactOutput(false, 20e6, address(this), "", PRICE_DATA);
 
         recordBalance(address(aaplStock), address(this));
-        aaplPool.addLiquidity(200 ether); // pool has 121.8 AAPL of reserves and 0.2 AAPL collected protocol fee
-        assertBalanceDecreased(121.8 ether);
+        aaplPool.addLiquidity(200 ether);
+        assertBalanceDecreased(122000000000000000001);
 
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
@@ -2762,7 +2764,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         recordBalance(address(usdcMock), address(this));
         aaplPool.addLiquidity(200 ether); // pool has 121.8 USDC of reserves and 0.2 USDC collected protocol fee
-        assertBalanceDecreased(121.8e6);
+        assertBalanceDecreased(122000001);
 
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
@@ -2778,13 +2780,13 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
-        aaplPool.swapExactOutput(false, 30e6, address(this), "", PRICE_DATA); // 0.3 AAPL protocol fee
-        aaplPool.swapExactOutput(true, 50 ether, address(this), "", PRICE_DATA); // 0.5 USDC protocol fee
+        aaplPool.swapExactOutput(false, 30e6, address(this), "", PRICE_DATA);
+        aaplPool.swapExactOutput(true, 50 ether, address(this), "", PRICE_DATA);
 
         aaplPool.removeLiquidity(200 ether);
 
-        assertEq(aaplStock.balanceOf(address(aaplPool)), 0.3 ether);
-        assertEq(usdcMock.balanceOf(address(aaplPool)), 0.5e6);
+        assertEq(aaplStock.balanceOf(address(aaplPool)), 333333333333333333);
+        assertEq(usdcMock.balanceOf(address(aaplPool)), 555556);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
     }
@@ -3300,12 +3302,16 @@ contract DclexPoolTest is Test, TestBalance {
         assertGt(r1Stock, r0Stock);
         assertGt(r1Usdc, r0Usdc);
 
-        // Burn the freshly minted LP. Reserves should drop close to r0
-        // (minor rounding from prorate math allowed, within 1 wei).
+        // Burn the freshly minted LP. Reserves should drop close to r0.
+        // addLiquidity ceil-rounds the stablecoin leg to whole 6-decimal units
+        // while removeLiquidity floors it, so a mint+burn round trip can leave
+        // one 6-decimal unit (1e12 in 18-decimal reserve terms) behind. That
+        // dust always accrues to the pool, never to the departing LP.
         aaplPool.removeLiquidity(lpToMint);
         (uint256 r2Stock, uint256 r2Usdc) = aaplPool.getReserves();
         assertApproxEqAbs(r2Stock, r0Stock, 1);
-        assertApproxEqAbs(r2Usdc, r0Usdc, 1);
+        assertGe(r2Usdc, r0Usdc);
+        assertApproxEqAbs(r2Usdc, r0Usdc, 1e12);
     }
 
     function testGetMaxPriceStalenessReturnsHardcoded60() public view {
@@ -3401,5 +3407,44 @@ contract DclexPoolTest is Test, TestBalance {
         (numerator, denominator) = aaplStock.multiplier();
         assertEq(numerator, 2);
         assertEq(denominator, 1);
+    }
+
+    function testExactOutputCostsTheSameAsExactInputForAnEquivalentTrade()
+        public
+        feeCurve(0.1 ether, 0)
+        liquidityMinted
+    {
+        uint256 stockOut = 5 ether;
+
+        uint256 snap = vm.snapshotState();
+        uint256 paid = aaplPool.swapExactOutput(
+            true, stockOut, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+
+        uint256 received = aaplPool.swapExactInput(
+            true, paid, address(this), "", PRICE_DATA
+        );
+
+        assertGe(
+            received,
+            stockOut,
+            "exact-output overcharged relative to exact-input"
+        );
+        assertApproxEqAbs(
+            received,
+            stockOut,
+            2e12,
+            "the two paths must price an identical trade identically"
+        );
+    }
+
+    function testSwapExactOutputRevertsWhenFeeRateReachesOneHundredPercent()
+        public
+        feeCurve(1 ether, 0)
+        liquidityMinted
+    {
+        vm.expectRevert(DclexPool.DclexPool__FeeRateTooHigh.selector);
+        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
     }
 }

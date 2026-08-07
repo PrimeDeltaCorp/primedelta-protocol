@@ -135,6 +135,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         (uint256 a, uint256 b) = feePool.getFeeCurve();
         rate = b + Math.mulDiv(a, inv, WAD);
         if (rate > MAX_FEE) rate = MAX_FEE;
+        if (rate >= WAD) return (false, 0);
         ok = true;
     }
 
@@ -151,6 +152,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         (uint256 a, uint256 b) = feePool.getFeeCurve();
         rate = b + Math.mulDiv(a, inv, WAD);
         if (rate > MAX_FEE) rate = MAX_FEE;
+        if (rate >= WAD) return (false, 0);
         ok = true;
     }
 
@@ -237,12 +239,12 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
             uint256 netIn18 = Math.mulDiv(stockOut, p, WAD, Math.Rounding.Ceil);
             (bool ok, uint256 fee) = _buyFee(stockOut, p);
             if (!ok) return;
-            uint256 expIn6 = Math.ceilDiv(Math.mulDiv(netIn18, WAD + fee, WAD, Math.Rounding.Ceil), 1e12);
+            uint256 expIn6 = Math.ceilDiv(Math.mulDiv(netIn18, WAD, WAD - fee, Math.Rounding.Ceil), 1e12);
             if (expIn6 == 0) return;
 
             got = feePool.swapExactOutput(true, stockOut, address(this), "", PRICE_DATA);
             assertEq(got, expIn6, "buy exact-out: input != ceil-derived gross");
-            assertGe(got * 1e12, Math.mulDiv(netIn18, WAD + fee, WAD), "buy exact-out: input not ceil-rounded");
+            assertGe(got * 1e12, Math.mulDiv(netIn18, WAD, WAD - fee), "buy exact-out: input not ceil-rounded");
         }
         assertGe(got * 1e12, Math.mulDiv(stockOut, p, WAD), "buy exact-out: took less than oracle value");
         {
@@ -266,13 +268,13 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         uint256 netInStock = Math.mulDiv(outSc18, WAD, p, Math.Rounding.Ceil);
         (bool ok, uint256 fee) = _sellFee(netInStock, p);
         if (!ok) return;
-        uint256 expGross = Math.mulDiv(netInStock, WAD + fee, WAD, Math.Rounding.Ceil);
+        uint256 expGross = Math.mulDiv(netInStock, WAD, WAD - fee, Math.Rounding.Ceil);
         if (expGross == 0) return;
 
         uint256 got = feePool.swapExactOutput(false, scOut, address(this), "", PRICE_DATA);
 
         assertEq(got, expGross, "sell exact-out: input != ceil-derived gross");
-        assertGe(got, Math.mulDiv(netInStock, WAD + fee, WAD), "sell exact-out: input not ceil-rounded");
+        assertGe(got, Math.mulDiv(netInStock, WAD, WAD - fee), "sell exact-out: input not ceil-rounded");
         assertGe(Math.mulDiv(got, p, WAD), outSc18, "sell exact-out: took less than oracle value");
 
         {
