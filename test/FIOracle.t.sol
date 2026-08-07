@@ -335,4 +335,29 @@ contract FIOracleTest is Test {
         vm.expectRevert(FIOracle.InvalidTrustedSigner.selector);
         new FIOracle(address(0), admin);
     }
+
+    function testClockSkewDoesNotWidenTheStalenessWindow() public {
+        uint64 future = uint64(block.timestamp + oracle.MAX_CLOCK_SKEW());
+        _updatePrice(AAPL_FEED_ID, 15230000000, -8, future);
+
+        skip(60);
+        oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+
+        skip(1);
+        vm.expectRevert(IPriceOracle.StalePrice.selector);
+        oracle.getPriceNoOlderThan(AAPL_FEED_ID, 60);
+    }
+
+    function testBackdatedPublishTimeStillAgesFromItself() public {
+        skip(1000);
+        uint64 backdated = uint64(block.timestamp - 20);
+        _updatePrice(AAPL_FEED_ID, 15230000000, -8, backdated);
+
+        skip(9);
+        oracle.getPriceNoOlderThan(AAPL_FEED_ID, 30);
+
+        skip(2);
+        vm.expectRevert(IPriceOracle.StalePrice.selector);
+        oracle.getPriceNoOlderThan(AAPL_FEED_ID, 30);
+    }
 }
