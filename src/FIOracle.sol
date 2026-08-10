@@ -40,6 +40,7 @@ contract FIOracle is IPriceOracle, AccessControl {
 
     constructor(address _trustedSigner, address admin) {
         if (_trustedSigner == address(0)) revert InvalidTrustedSigner();
+        if (admin == address(0)) revert InvalidFeeRecipient();
         trustedSigner = _trustedSigner;
         feeRecipient = admin;
         _grantRole(DEFAULT_ADMIN_ROLE, admin);

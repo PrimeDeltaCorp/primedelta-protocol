@@ -360,4 +360,9 @@ contract FIOracleTest is Test {
         vm.expectRevert(IPriceOracle.StalePrice.selector);
         oracle.getPriceNoOlderThan(AAPL_FEED_ID, 30);
     }
+
+    function testConstructorRejectsZeroAdmin() public {
+        vm.expectRevert(FIOracle.InvalidFeeRecipient.selector);
+        new FIOracle(signer, address(0));
+    }
 }
