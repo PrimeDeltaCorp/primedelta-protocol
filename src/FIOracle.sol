@@ -22,10 +22,17 @@ contract FIOracle is IPriceOracle, AccessControl {
     // simulates against the last mined block, ~10s stale + cross-node lag).
     uint256 public constant MAX_CLOCK_SKEW = 30 seconds;
 
+    struct StoredPrice {
+        int64 price;
+        int32 expo;
+        uint64 publishTime;
+        uint64 observedAt;
+    }
+
     address public trustedSigner;
     uint256 public pricePerUpdate;
     address public feeRecipient;
-    mapping(bytes32 => Price) private priceFeeds;
+    mapping(bytes32 => StoredPrice) private priceFeeds;
 
     event TrustedSignerUpdated(address newSigner);
     event PricePerUpdateChanged(uint256 pricePerUpdate);
@@ -96,16 +103,14 @@ contract FIOracle is IPriceOracle, AccessControl {
         bytes32 id,
         uint256 age
     ) external view override returns (Price memory) {
-        Price memory p = priceFeeds[id];
+        StoredPrice memory p = priceFeeds[id];
         if (p.publishTime == 0) {
             revert PriceFeedNotFound();
         }
-        // Guard the subtraction: a within-skew future publishTime is fresh,
-        // not stale, and block.timestamp - publishTime would underflow.
-        if (block.timestamp > p.publishTime && block.timestamp - p.publishTime > age) {
+        if (block.timestamp - p.observedAt > age) {
             revert StalePrice();
         }
-        return p;
+        return Price(p.price, p.expo, p.publishTime);
     }
 
     function getUpdateFee(
@@ -153,6 +158,9 @@ contract FIOracle is IPriceOracle, AccessControl {
             revert InvalidSignature();
         }
 
-        priceFeeds[feedId] = Price(price, expo, publishTime);
+        uint64 observedAt = publishTime < uint64(block.timestamp)
+            ? publishTime
+            : uint64(block.timestamp);
+        priceFeeds[feedId] = StoredPrice(price, expo, publishTime, observedAt);
     }
 }
