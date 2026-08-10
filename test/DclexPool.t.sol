@@ -2,6 +2,7 @@
 pragma solidity ^0.8.26;
 
 import {Test, console} from "forge-std/Test.sol";
+import {IStock} from "dclex-blockchain/contracts/interfaces/IStock.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IERC20Errors} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -3561,5 +3562,19 @@ contract DclexPoolTest is Test, TestBalance {
 
         vm.expectRevert(DclexPool.DclexPool__ExcessiveInputAmount.selector);
         aaplPool.addLiquidity(lp, intendedStock, intendedStable, block.timestamp);
+    }
+
+    function testConstructorRevertsOnInvalidStockDecimals() public {
+        IPriceOracle oracle = helperConfig.getConfig().oracle;
+        vm.expectRevert(DclexPool.DclexPool__InvalidStockDecimals.selector);
+        new DclexPool(
+            IStock(address(usdcMock)),
+            IERC20(address(usdcMock)),
+            oracle,
+            0,
+            0,
+            0,
+            POOL_ADMIN
+        );
     }
 }
