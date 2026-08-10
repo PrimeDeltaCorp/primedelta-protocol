@@ -307,13 +307,13 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
 
         uint256 stockBefore = aaplStock.balanceOf(address(this));
         uint256 scBefore = usdcMock.balanceOf(address(this));
-        feePool.addLiquidity(lp);
+        feePool.addLiquidity(lp, type(uint256).max, type(uint256).max, block.timestamp);
         uint256 stockMid = aaplStock.balanceOf(address(this));
         uint256 scMid = usdcMock.balanceOf(address(this));
         uint256 putInStock = stockBefore - stockMid;
         uint256 putInSc = scBefore - scMid;
 
-        feePool.removeLiquidity(lp);
+        feePool.removeLiquidity(lp, 0, 0, block.timestamp);
         uint256 gotStock = aaplStock.balanceOf(address(this)) - stockMid;
         uint256 gotSc = usdcMock.balanceOf(address(this)) - scMid;
 
@@ -387,7 +387,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         uint256 lp = feePool.totalSupply() / 10;
         uint256 stockBefore = aaplStock.balanceOf(address(this));
         uint256 scBefore = usdcMock.balanceOf(address(this));
-        feePool.addLiquidity(lp);
+        feePool.addLiquidity(lp, type(uint256).max, type(uint256).max, block.timestamp);
         uint256 stockMid = aaplStock.balanceOf(address(this));
         uint256 scMid = usdcMock.balanceOf(address(this));
         uint256 putInStock = stockBefore - stockMid;
@@ -395,7 +395,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         assertGt(putInStock, 0, "LP add pulled no stock");
         assertGt(putInSc, 0, "LP add pulled no stablecoin");
 
-        feePool.removeLiquidity(lp);
+        feePool.removeLiquidity(lp, 0, 0, block.timestamp);
         uint256 gotStock = aaplStock.balanceOf(address(this)) - stockMid;
         uint256 gotSc = usdcMock.balanceOf(address(this)) - scMid;
         assertLe(gotStock, putInStock, "LP received more stock than deposited");

@@ -35,6 +35,9 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     error DclexPool__InvalidPriceOrExponent();
     error DclexPool__FeeCurveOutOfBounds();
     error DclexPool__FeeRateTooHigh();
+    error DclexPool__ExcessiveInputAmount();
+    error DclexPool__InsufficientOutputAmount();
+    error DclexPool__DeadlineExpired();
     error DclexPool__InvalidStablecoinDecimals();
     error DclexPool__ZeroAddress();
 
@@ -142,6 +145,11 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         }
     }
 
+    modifier checkDeadline(uint256 deadline) {
+        if (block.timestamp > deadline) revert DclexPool__DeadlineExpired();
+        _;
+    }
+
     function initialize(
         uint256 stockAmount,
         uint256 stablecoinAmount,
@@ -167,8 +175,11 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     }
 
     function addLiquidity(
-        uint256 liquidityAmount
-    ) public nonReentrant {
+        uint256 liquidityAmount,
+        uint256 maxStockIn,
+        uint256 maxStablecoinIn,
+        uint256 deadline
+    ) public nonReentrant checkDeadline(deadline) {
         if (!initialized) {
             revert DclexPool__NotInitialized();
         }
@@ -190,6 +201,9 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         if (stocksTaken == 0 || stablecoinsTaken6 == 0) {
             revert DclexPool__ZeroLiquidityDeposit();
         }
+        if (stocksTaken > maxStockIn || stablecoinsTaken6 > maxStablecoinIn) {
+            revert DclexPool__ExcessiveInputAmount();
+        }
         stockToken.safeTransferFrom(msg.sender, address(this), stocksTaken);
         stablecoinToken.safeTransferFrom(msg.sender, address(this), stablecoinsTaken6);
         _mint(msg.sender, liquidityAmount);
@@ -197,18 +211,26 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     }
 
     function removeLiquidity(
-        uint256 liquidityAmount
-    ) public nonReentrant {
+        uint256 liquidityAmount,
+        uint256 minStockOut,
+        uint256 minStablecoinOut,
+        uint256 deadline
+    ) public nonReentrant checkDeadline(deadline) {
         if (!initialized) revert DclexPool__NotInitialized();
         uint256 supply = totalSupply();
         if (supply == 0) revert DclexPool__NotInitialized();
         (uint256 stockReserve, uint256 stablecoinReserve) = _getReserves();
         uint256 stocksToSend = Math.mulDiv(liquidityAmount, stockReserve, supply);
-        uint256 stablecoinToSend = Math.mulDiv(liquidityAmount, stablecoinReserve, supply);
+        uint256 stablecoinToSend6 = Math.mulDiv(
+            liquidityAmount, stablecoinReserve, supply
+        ) / 1e12;
+        if (stocksToSend < minStockOut || stablecoinToSend6 < minStablecoinOut) {
+            revert DclexPool__InsufficientOutputAmount();
+        }
         _burn(msg.sender, liquidityAmount);
         stockToken.safeTransfer(msg.sender, stocksToSend);
-        stablecoinToken.safeTransfer(msg.sender, stablecoinToSend / 1e12);
-        emit LiquidityRemoved(liquidityAmount, stocksToSend, stablecoinToSend / 1e12);
+        stablecoinToken.safeTransfer(msg.sender, stablecoinToSend6);
+        emit LiquidityRemoved(liquidityAmount, stocksToSend, stablecoinToSend6);
         // Last LP exited — re-open the pool for a fresh initialize() instead
         // of bricking it forever (dclex-infrastructure#336). Protocol fees
         // stay accounted in collectedProtocolFees* and survive across re-init.
