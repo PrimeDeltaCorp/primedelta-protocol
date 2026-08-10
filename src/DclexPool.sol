@@ -545,22 +545,20 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         return protocolFeeRate;
     }
 
-    function collectedProtocolFees() external view returns (uint256, uint256) {
+    function collectedProtocolFees() external view nonReentrantView returns (uint256, uint256) {
         return (collectedProtocolFeesStock, collectedProtocolFeesStablecoin);
     }
 
     function withdrawCollectedProtocolFees(
         address receiver
     ) external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
-        stockToken.safeTransfer(receiver, collectedProtocolFeesStock);
-        stablecoinToken.safeTransfer(receiver, collectedProtocolFeesStablecoin / 1e12);
-        emit ProtocolFeeWithdrawn(
-            collectedProtocolFeesStock,
-            collectedProtocolFeesStablecoin / 1e12,
-            receiver
-        );
+        uint256 stockFees = collectedProtocolFeesStock;
+        uint256 stablecoinFees6 = collectedProtocolFeesStablecoin / 1e12;
         collectedProtocolFeesStock = 0;
         collectedProtocolFeesStablecoin = 0;
+        stockToken.safeTransfer(receiver, stockFees);
+        stablecoinToken.safeTransfer(receiver, stablecoinFees6);
+        emit ProtocolFeeWithdrawn(stockFees, stablecoinFees6, receiver);
     }
 
     function token0() external view returns (address) {
@@ -582,8 +580,12 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     /// @return stablecoinReserve Stablecoin amount scaled to 1e18 (post-fee).
     ///         Divide by 1e12 to convert back to the underlying 6-decimal dUSD
     ///         unit.
-    function getReserves() external view returns (uint256 stockReserve, uint256 stablecoinReserve) {
+    function getReserves() external view nonReentrantView returns (uint256 stockReserve, uint256 stablecoinReserve) {
         return _getReserves();
+    }
+
+    function poolOperationInProgress() external view returns (bool) {
+        return _reentrancyGuardEntered();
     }
 
     /// @notice Maximum age (seconds) of a signed price feed update before

@@ -3577,4 +3577,14 @@ contract DclexPoolTest is Test, TestBalance {
             POOL_ADMIN
         );
     }
+
+    function testPoolOperationInProgressIsFalseAtRest() public liquidityMinted {
+        assertFalse(aaplPool.poolOperationInProgress());
+
+        aaplPool.swapExactInput(true, 10e6, address(this), "", PRICE_DATA);
+        assertFalse(
+            aaplPool.poolOperationInProgress(),
+            "probe must clear once the operation returns"
+        );
+    }
 }
