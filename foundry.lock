@@ -1,14 +1,11 @@
 {
+  "lib/dclex-blockchain": {
+    "rev": "304c41b42ed52b56edb5e0ed5cec937aed9bd2b9"
+  },
   "lib/forge-std": {
-    "rev": "3b20d60d14b343ee4f908cb8079495c07f5e8981"
+    "rev": "81df7a1a97ab719d65013ab6e6369a58835b882c"
   },
   "lib/openzeppelin-contracts": {
-    "rev": "acd4ff74de833399287ed6b31b4debf6b2b35527"
-  },
-  "lib/pyth-crosschain": {
-    "rev": "8c551ebe43ed72036b53e04c18424e7dc22a5dc2"
-  },
-  "lib/pyth-sdk-solidity": {
-    "rev": "11d6bcfc2e56885535a9a8e3c8417847cb20be14"
+    "rev": "48ab75f29abaa315fad7fa7b8338f92bb07376a7"
   }
 }
