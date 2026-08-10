@@ -1274,7 +1274,7 @@ contract DclexPoolTest is Test, TestBalance {
         assertBalanceIncreased(3 * 30 ether + 20 ether);
     }
 
-    function testInitializeMintsTokensToCaller() public {
+    function testInitializeMintsTokensToTheNamedRecipient() public {
         uint256 balanceBefore = aaplPool.balanceOf(USER_1);
         _allowSeed(aaplPool, USER_1);
         vm.prank(USER_1);
@@ -3686,13 +3686,40 @@ contract DclexPoolTest is Test, TestBalance {
         assertGt(aaplPool.totalSupply(), 0);
     }
 
+    /// The recipient is DID-verified but holds nothing and has approved nothing,
+    /// so this also pins that the deposits come from the caller.
     function testInitializeMintsToRecipientNotCaller() public {
         address treasury = makeAddr("treasury");
-        setupAccount(treasury);
-        uint256 before = aaplPool.balanceOf(address(this));
+        vm.prank(ADMIN);
+        digitalIdentity.mintAdmin(treasury, 0, bytes32(0));
+
+        uint256 lpBefore = aaplPool.balanceOf(address(this));
+        uint256 stockBefore = aaplStock.balanceOf(address(this));
+        uint256 usdcBefore = usdcMock.balanceOf(address(this));
+
         aaplPool.initialize(1 ether, 1e6, treasury, PRICE_DATA);
-        assertEq(aaplPool.balanceOf(address(this)), before, "caller must hold no LP");
+
+        assertEq(aaplPool.balanceOf(address(this)), lpBefore, "caller must hold no LP");
         assertGt(aaplPool.balanceOf(treasury), 0, "recipient must hold the genesis LP");
+        assertEq(aaplStock.balanceOf(address(this)), stockBefore - 1 ether, "caller pays the stock leg");
+        assertEq(usdcMock.balanceOf(address(this)), usdcBefore - 1e6, "caller pays the stablecoin leg");
+    }
+
+    function testInitializeRejectsRecipientWithoutDID() public {
+        vm.expectRevert(InvalidDID.selector);
+        aaplPool.initialize(1 ether, 1e6, makeAddr("no_did_treasury"), PRICE_DATA);
+    }
+
+    function testInitializeRevokesTheRoleFromEveryHolderNotJustTheCaller() public {
+        address stray = makeAddr("stray_initializer");
+        _allowSeed(aaplPool, stray);
+        bytes32 role = aaplPool.INITIALIZER_ROLE();
+        assertTrue(aaplPool.hasRole(role, stray));
+
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+
+        assertFalse(aaplPool.hasRole(role, address(this)), "the CALLER must lose the seeding role");
+        assertFalse(aaplPool.hasRole(role, stray), "a stray grantee must lose it too");
     }
 
     function testInitializeRejectsZeroRecipient() public {

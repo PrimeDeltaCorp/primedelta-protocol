@@ -13,14 +13,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 import {
     ReentrancyGuard
 } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IStock} from "dclex-blockchain/contracts/interfaces/IStock.sol";
 
-contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
+contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeERC20 for IStock;
 
@@ -52,10 +52,11 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     ///         this pool. Baked in at deploy — no setter, no per-deploy knob.
     uint256 private constant MAX_PRICE_STALENESS = 60 seconds;
 
-    /// @notice Allows seeding the opening reserves. Revoked from the caller as
-    ///         soon as `initialize` succeeds; `DEFAULT_ADMIN_ROLE` can grant it
-    ///         again, which a drained pool needs since `removeLiquidity` clears
-    ///         `initialized` when the last LP exits.
+    /// @notice Allows seeding the opening reserves. Every holder loses it as
+    ///         soon as `initialize` succeeds, so a second grantee cannot re-seed
+    ///         a pool that later drains; `DEFAULT_ADMIN_ROLE` grants it again
+    ///         when that is wanted, since `removeLiquidity` clears `initialized`
+    ///         as the last LP exits.
     bytes32 public constant INITIALIZER_ROLE = keccak256("INITIALIZER_ROLE");
     IPriceOracle public immutable oracle;
     IStock public immutable stockToken;
@@ -164,10 +165,12 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     }
 
     /// @notice Seed the pool's opening reserves.
-    /// @dev The opening ratio is whatever this call sets: `addLiquidity` is
-    ///      strictly ratio-preserving and swaps at the extremes revert, so a
-    ///      skewed seed cannot be cheaply repaired and forces every later LP
-    ///      into the same composition. Hence the role gate.
+    /// @dev `addLiquidity` is strictly ratio-preserving and swaps at the
+    ///      extremes revert, so the composition the pool opens with cannot be
+    ///      cheaply repaired and forces every later LP into it. Hence the role
+    ///      gate. Note the gate bounds who seeds, not the composition itself:
+    ///      `addLiquidity` reads reserves, so tokens donated to the pool before
+    ///      the seed still shift it — at the donor's own expense.
     /// @param recipient Receives the LP tokens. The deposits still come from
     ///        `msg.sender`, so a seeding helper can pay without holding a
     ///        position it has no way to transfer.
@@ -183,6 +186,12 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         if (recipient == address(0)) {
             revert DclexPool__ZeroAddress();
         }
+        // Both LP exits are DID-gated — transfer here, and removeLiquidity via
+        // the Stock/Stablecoin payouts — so an unverified recipient would hold
+        // a position it could never move or redeem.
+        if (!stockToken.DID().verifyTransfer(recipient, recipient)) {
+            revert InvalidDID();
+        }
         if (stockAmount == 0 || stablecoinAmount == 0) {
             revert DclexPool__ZeroLiquidityDeposit();
         }
@@ -193,7 +202,11 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         uint256 stablecoinReserveValue = stablecoinAmount * 1e12;
         uint256 liquidityAmount = (stockReserveValue + stablecoinReserveValue);
         initialized = true;
-        _revokeRole(INITIALIZER_ROLE, msg.sender);
+        // Clear every holder, not just the caller: a stray grantee would
+        // otherwise be able to re-seed the pool once it drains.
+        for (uint256 i = getRoleMemberCount(INITIALIZER_ROLE); i > 0; --i) {
+            _revokeRole(INITIALIZER_ROLE, getRoleMember(INITIALIZER_ROLE, i - 1));
+        }
         stockToken.safeTransferFrom(msg.sender, address(this), stockAmount);
         stablecoinToken.safeTransferFrom(msg.sender, address(this), stablecoinAmount);
         _mint(recipient, liquidityAmount);
