@@ -244,7 +244,7 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
         // Fresh AAPL pool with a non-zero fee curve AND a non-zero protocol fee
         // so collectedProtocolFees actually accumulate.
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        pool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, PROTOCOL_FEE);
+        pool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, PROTOCOL_FEE, makeAddr("ror_pool_lp"));
 
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(pool), 0, bytes32(0));
@@ -263,7 +263,7 @@ contract Invariant_ReadOnlyReentrancy is DclexPoolTest {
         vm.startPrank(poolLp);
         aaplStock.approve(address(pool), type(uint256).max);
         usdcMock.approve(address(pool), type(uint256).max);
-        pool.initialize(5000 ether, 5000e6, empty);
+        pool.initialize(5000 ether, 5000e6, poolLp, empty);
         vm.stopPrank();
 
         // Deploy + fund the handler (DID, stock, dUSD, approvals).

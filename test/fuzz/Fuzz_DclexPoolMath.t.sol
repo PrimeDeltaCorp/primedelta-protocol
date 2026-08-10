@@ -68,7 +68,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         super.setUp(); // Factory/DID/Stock/MockPriceOracle + aaplPool/nvdaPool
 
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        feePool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, 0);
+        feePool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, 0, makeAddr("fuzz_pool_lp"));
 
         // Pool needs a DID to hold/transfer the stock token.
         vm.prank(ADMIN);
@@ -89,7 +89,7 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         vm.startPrank(poolLp);
         aaplStock.approve(address(feePool), type(uint256).max);
         usdcMock.approve(address(feePool), type(uint256).max);
-        feePool.initialize(5000 ether, 5000e6, empty);
+        feePool.initialize(5000 ether, 5000e6, poolLp, empty);
         vm.stopPrank();
 
         // address(this) approvals for the LP-fairness add (approval only, no

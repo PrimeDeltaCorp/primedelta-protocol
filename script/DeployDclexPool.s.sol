@@ -18,7 +18,8 @@ contract DeployDclexPool is Script {
         HelperConfig helperConfig,
         uint256 feeCurveA,
         uint256 feeCurveB,
-        uint256 protocolFeeRate
+        uint256 protocolFeeRate,
+        address initializer
     ) external returns (DclexPool) {
         HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
         vm.startBroadcast();
@@ -29,7 +30,8 @@ contract DeployDclexPool is Script {
             feeCurveA,
             feeCurveB,
             protocolFeeRate,
-            config.admin
+            config.admin,
+            initializer
         );
         vm.stopBroadcast();
         return dclexPool;
@@ -41,7 +43,8 @@ contract DeployDclexPool is Script {
         HelperConfig helperConfig,
         uint256 feeCurveA,
         uint256 feeCurveB,
-        uint256 protocolFeeRate
+        uint256 protocolFeeRate,
+        address initializer
     ) external returns (DclexPool) {
         HelperConfig.NetworkConfig memory config = helperConfig.getConfig();
         return new DclexPool(
@@ -51,7 +54,8 @@ contract DeployDclexPool is Script {
             feeCurveA,
             feeCurveB,
             protocolFeeRate,
-            config.admin
+            config.admin,
+            initializer
         );
     }
 
@@ -59,12 +63,14 @@ contract DeployDclexPool is Script {
         address stock = (block.chainid == 11155111)
             ? 0x538d1094A35201D69e1Ac8c2dD42000C1CC0612E
             : 0x7fc1375aA5d360Ca90cc443B5c3d3919aA8B9208;
+        HelperConfig helperConfig = new HelperConfig();
         this.run(
             IStock(address(stock)),
-            new HelperConfig(),
+            helperConfig,
             0,
             0,
-            DEFAULT_PROTOCOL_FEE_RATE
+            DEFAULT_PROTOCOL_FEE_RATE,
+            helperConfig.getConfig().admin
         );
     }
 }
