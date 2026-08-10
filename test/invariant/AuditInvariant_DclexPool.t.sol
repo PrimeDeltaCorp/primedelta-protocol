@@ -403,7 +403,7 @@ contract AuditInvariant_DclexPool is DclexPoolTest {
         // Deploy a fresh AAPL pool with a NON-ZERO fee curve (default protocol
         // fee 0 so all fees stay in the pool, simplifying conservation).
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        pool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, 0);
+        pool = poolDeployer.deploy(aaplStock, helperConfig, FEE_A, FEE_B, 0, makeAddr("invariant_pool_lp"));
 
         // Pool needs a DID to hold/transfer stock.
         vm.prank(ADMIN);
@@ -425,7 +425,7 @@ contract AuditInvariant_DclexPool is DclexPoolTest {
         vm.startPrank(poolLp);
         aaplStock.approve(address(pool), type(uint256).max);
         usdcMock.approve(address(pool), type(uint256).max);
-        pool.initialize(5000 ether, 5000e6, empty);
+        pool.initialize(5000 ether, 5000e6, poolLp, empty);
         vm.stopPrank();
 
         // address(this) approves `pool` (approval only — no balance change, so

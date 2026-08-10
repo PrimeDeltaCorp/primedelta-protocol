@@ -103,8 +103,8 @@ contract DclexPoolTest is Test, TestBalance {
         aaplStock = Stock(stocksFactory.stocks("AAPL"));
         nvdaStock = Stock(stocksFactory.stocks("NVDA"));
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        aaplPool = poolDeployer.run(aaplStock, helperConfig, 0, 0, 0);
-        nvdaPool = poolDeployer.run(nvdaStock, helperConfig, 0, 0, 0);
+        aaplPool = poolDeployer.run(aaplStock, helperConfig, 0, 0, 0, address(this));
+        nvdaPool = poolDeployer.run(nvdaStock, helperConfig, 0, 0, 0, address(this));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(aaplPool), 0, bytes32(0));
         vm.prank(ADMIN);
@@ -130,6 +130,10 @@ contract DclexPoolTest is Test, TestBalance {
 
     modifier liquidityMinted() {
         address liquidityProvider = makeAddr("liquidityProvider");
+        vm.startPrank(POOL_ADMIN);
+        aaplPool.grantRole(aaplPool.INITIALIZER_ROLE(), liquidityProvider);
+        nvdaPool.grantRole(nvdaPool.INITIALIZER_ROLE(), liquidityProvider);
+        vm.stopPrank();
         vm.startPrank(ADMIN);
         digitalIdentity.mintAdmin(liquidityProvider, 0, bytes32(0));
         vm.stopPrank();
@@ -143,8 +147,8 @@ contract DclexPoolTest is Test, TestBalance {
         nvdaStock.approve(address(nvdaPool), 5000 ether);
         usdcMock.approve(address(aaplPool), 5000e6);
         usdcMock.approve(address(nvdaPool), 5000e6);
-        aaplPool.initialize(5000 ether, 5000e6, PRICE_DATA);
-        nvdaPool.initialize(5000 ether, 5000e6, PRICE_DATA);
+        aaplPool.initialize(5000 ether, 5000e6, liquidityProvider, PRICE_DATA);
+        nvdaPool.initialize(5000 ether, 5000e6, liquidityProvider, PRICE_DATA);
         vm.stopPrank();
         _;
     }
@@ -213,9 +217,7 @@ contract DclexPoolTest is Test, TestBalance {
     // composes with active pranks inside modifiers.
     function _redeployAaplPool(uint256 feeA, uint256 feeB) private {
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        aaplPool = poolDeployer.deploy(
-            aaplStock, helperConfig, feeA, feeB, 0
-        );
+        aaplPool = poolDeployer.deploy(aaplStock, helperConfig, feeA, feeB, 0, address(this));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(aaplPool), 0, bytes32(0));
         _approveAaplPool(address(this));
@@ -227,9 +229,7 @@ contract DclexPoolTest is Test, TestBalance {
 
     function _redeployNvdaPool(uint256 feeA, uint256 feeB) private {
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        nvdaPool = poolDeployer.deploy(
-            nvdaStock, helperConfig, feeA, feeB, 0
-        );
+        nvdaPool = poolDeployer.deploy(nvdaStock, helperConfig, feeA, feeB, 0, address(this));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(nvdaPool), 0, bytes32(0));
         _approveNvdaPool(address(this));
@@ -265,6 +265,10 @@ contract DclexPoolTest is Test, TestBalance {
     ) private {
         _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity);
         address liquidityProvider = makeAddr("liquidityProvider");
+        vm.startPrank(POOL_ADMIN);
+        aaplPool.grantRole(aaplPool.INITIALIZER_ROLE(), liquidityProvider);
+        nvdaPool.grantRole(nvdaPool.INITIALIZER_ROLE(), liquidityProvider);
+        vm.stopPrank();
         if (
             !digitalIdentity.verifyTransfer(liquidityProvider, liquidityProvider)
         ) {
@@ -278,7 +282,7 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(liquidityProvider);
         aaplStock.approve(address(aaplPool), 5000 ether);
         usdcMock.approve(address(aaplPool), 5000e6);
-        aaplPool.initialize(5000 ether, 5000e6, PRICE_DATA);
+        aaplPool.initialize(5000 ether, 5000e6, liquidityProvider, PRICE_DATA);
         vm.stopPrank();
     }
 
@@ -288,6 +292,10 @@ contract DclexPoolTest is Test, TestBalance {
     ) private {
         _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity);
         address liquidityProvider = makeAddr("liquidityProvider");
+        vm.startPrank(POOL_ADMIN);
+        aaplPool.grantRole(aaplPool.INITIALIZER_ROLE(), liquidityProvider);
+        nvdaPool.grantRole(nvdaPool.INITIALIZER_ROLE(), liquidityProvider);
+        vm.stopPrank();
         if (
             !digitalIdentity.verifyTransfer(liquidityProvider, liquidityProvider)
         ) {
@@ -301,7 +309,7 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(liquidityProvider);
         nvdaStock.approve(address(nvdaPool), 5000 ether);
         usdcMock.approve(address(nvdaPool), 5000e6);
-        nvdaPool.initialize(5000 ether, 5000e6, PRICE_DATA);
+        nvdaPool.initialize(5000 ether, 5000e6, liquidityProvider, PRICE_DATA);
         vm.stopPrank();
     }
 
@@ -1257,57 +1265,69 @@ contract DclexPoolTest is Test, TestBalance {
     {
         updatePrice(AAPL_PRICE_FEED_ID, 20 ether);
         recordBalance(address(aaplPool), address(this));
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
         assertBalanceIncreased(21 ether);
 
         updatePrice(NVDA_PRICE_FEED_ID, 30 ether);
         recordBalance(address(nvdaPool), address(this));
-        nvdaPool.initialize(3 ether, 20e6, PRICE_DATA);
+        nvdaPool.initialize(3 ether, 20e6, address(this), PRICE_DATA);
         assertBalanceIncreased(3 * 30 ether + 20 ether);
     }
 
-    function testInitializeMintsTokensToCaller() public {
+    function testInitializeMintsTokensToTheNamedRecipient() public {
         uint256 balanceBefore = aaplPool.balanceOf(USER_1);
+        _allowSeed(aaplPool, USER_1);
         vm.prank(USER_1);
-        aaplPool.initialize(0.5 ether, 0.5e6, PRICE_DATA);
+        aaplPool.initialize(0.5 ether, 0.5e6, USER_1, PRICE_DATA);
         uint256 balanceAfter = aaplPool.balanceOf(USER_1);
         assertEq(balanceAfter - balanceBefore, 1 ether);
 
         balanceBefore = nvdaPool.balanceOf(USER_2);
+        _allowSeed(nvdaPool, USER_2);
         vm.prank(USER_2);
-        nvdaPool.initialize(0.5 ether, 0.5e6, PRICE_DATA);
+        nvdaPool.initialize(0.5 ether, 0.5e6, USER_2, PRICE_DATA);
         balanceAfter = nvdaPool.balanceOf(USER_2);
         assertEq(balanceAfter - balanceBefore, 1 ether);
     }
 
     function testInitializeTakesTakesPassedUsdcAmount() public {
         recordBalance(address(usdcMock), address(this));
-        aaplPool.initialize(1 ether, 1, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1, address(this), PRICE_DATA);
         assertBalanceDecreased(1);
 
         recordBalance(address(usdcMock), address(this));
-        nvdaPool.initialize(2 ether, 5e6, PRICE_DATA);
+        nvdaPool.initialize(2 ether, 5e6, address(this), PRICE_DATA);
         assertBalanceDecreased(5e6);
     }
 
     function testInitializeTakesPassedStocksAmount() public {
         recordBalance(address(aaplStock), address(this));
-        aaplPool.initialize(1, 1e6, PRICE_DATA);
+        aaplPool.initialize(1, 1e6, address(this), PRICE_DATA);
         assertBalanceDecreased(1);
 
         recordBalance(address(nvdaStock), address(this));
-        nvdaPool.initialize(5 ether, 2e6, PRICE_DATA);
+        nvdaPool.initialize(5 ether, 2e6, address(this), PRICE_DATA);
         assertBalanceDecreased(5 ether);
     }
 
-    function testInitializeCannotBeCalledAgain() public {
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
-        vm.expectRevert(DclexPool.DclexPool__AlreadyInitialized.selector);
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
+    /// Grants the seeding role the way an operator would: the pool admin hands
+    /// it out, and `initialize` revokes it again on success.
+    function _allowSeed(DclexPool pool, address who) private {
+        bytes32 role = pool.INITIALIZER_ROLE();
+        vm.prank(POOL_ADMIN);
+        pool.grantRole(role, who);
+    }
 
-        nvdaPool.initialize(1 ether, 1e6, PRICE_DATA);
+    function testInitializeCannotBeCalledAgain() public {
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+        _allowSeed(aaplPool, address(this));
         vm.expectRevert(DclexPool.DclexPool__AlreadyInitialized.selector);
-        nvdaPool.initialize(1 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+
+        nvdaPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+        _allowSeed(nvdaPool, address(this));
+        vm.expectRevert(DclexPool.DclexPool__AlreadyInitialized.selector);
+        nvdaPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
     }
 
     function testAddLiquidityRevertsWhenNotInitialized() public {
@@ -1316,7 +1336,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testAddLiquidityMintsGivenAmountOfLiquidityTokens() public {
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
 
         uint256 totalBalanceBefore = aaplPool.totalSupply();
         uint256 balanceBefore = aaplPool.balanceOf(address(this));
@@ -1336,7 +1356,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testAddLiquidityMintsTokensToCaller() public {
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
 
         uint256 balanceBefore = aaplPool.balanceOf(USER_1);
         vm.prank(USER_1);
@@ -1354,7 +1374,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testAddLiquidityTakesStockTokensProportionallyToRequestedLiquidityTokensShare()
         public
     {
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 50 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
@@ -1387,7 +1407,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
     {
         updatePrice(AAPL_PRICE_FEED_ID, 20 ether);
-        aaplPool.initialize(0.05 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(0.05 ether, 1e6, address(this), PRICE_DATA);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 0.05 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
@@ -1422,7 +1442,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testAddLiquidityTakesUSDCTokensProportionallyToRequestedLiquidityTokensShare()
         public
     {
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
         assertEq(aaplPool.totalSupply(), 100 ether);
 
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
@@ -1451,7 +1471,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
     {
         updatePrice(AAPL_PRICE_FEED_ID, 20 ether);
-        aaplPool.initialize(0.05 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(0.05 ether, 1e6, address(this), PRICE_DATA);
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 1e6);
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
@@ -1483,7 +1503,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testRemoveLiquidityBurnsGivenAmountOfLiquidityTokens() public {
-        aaplPool.initialize(6000 ether, 6000e6, PRICE_DATA);
+        aaplPool.initialize(6000 ether, 6000e6, address(this), PRICE_DATA);
 
         uint256 totalBalanceBefore = aaplPool.totalSupply();
         uint256 balanceBefore = aaplPool.balanceOf(address(this));
@@ -1505,7 +1525,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testRemoveLiquidityRevertsWhenCallerHasNotEnoughLiquidityTokens()
         public
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         vm.expectPartialRevert(IERC20Errors.ERC20InsufficientBalance.selector);
         aaplPool.removeLiquidity(200 ether + 1, 0, 0, block.timestamp);
@@ -1518,8 +1538,9 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testAddLiquidityMintsTokensFromCaller() public {
+        _allowSeed(aaplPool, USER_1);
         vm.prank(USER_1);
-        aaplPool.initialize(1 ether, 1e6, PRICE_DATA);
+        aaplPool.initialize(1 ether, 1e6, USER_1, PRICE_DATA);
         vm.prank(USER_2);
         aaplPool.addLiquidity(1, type(uint256).max, type(uint256).max, block.timestamp);
 
@@ -1539,7 +1560,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testRemoveLiquidityGivesStockTokensProportionallyToBurnedLiquidityTokensShare()
         public
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
         aaplPool.removeLiquidity(2 ether, 0, 0, block.timestamp); // total share burned: 1%
@@ -1567,7 +1588,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
     {
         updatePrice(AAPL_PRICE_FEED_ID, 20 ether);
-        aaplPool.initialize(5 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(5 ether, 100e6, address(this), PRICE_DATA);
 
         assertEq(aaplStock.balanceOf(address(aaplPool)), 5 ether);
         uint256 balanceBefore = aaplStock.balanceOf(address(this));
@@ -1593,7 +1614,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testRemoveLiquidityGivesUSDCTokensProportionallyToBurnedLiquidityTokensShare()
         public
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         assertEq(usdcMock.balanceOf(address(aaplPool)), 100e6);
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
@@ -1622,7 +1643,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
     {
         updatePrice(AAPL_PRICE_FEED_ID, 20 ether);
-        aaplPool.initialize(5 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(5 ether, 100e6, address(this), PRICE_DATA);
 
         uint256 balanceBefore = usdcMock.balanceOf(address(this));
         aaplPool.removeLiquidity(20 ether, 0, 0, block.timestamp); // total share requested: 10%
@@ -1647,7 +1668,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testLPTokensCannotBeTransferredToNonDclexVerifiedContracts()
         public
     {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
         address nonVerifiedContract = address(new USDCMock("", ""));
 
         vm.expectRevert(InvalidDID.selector);
@@ -1659,7 +1680,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testLPTokensCannotBeTransferredToBlockedContracts() public {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
 
         address blockedAddress = address(new USDCMock("", ""));
         vm.prank(ADMIN);
@@ -1680,7 +1701,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testLPTokenCanBeTransferredToDclexVerifiedContracts() public {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
 
         address verifiedAddress = address(new USDCMock("", ""));
         vm.prank(ADMIN);
@@ -1694,7 +1715,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testLPTokensCannotBeTransferredToNonDclexVerifiedAccounts()
         public
     {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
         address nonVerifiedAddress = makeAddr("non-verified");
 
         vm.expectRevert(InvalidDID.selector);
@@ -1706,7 +1727,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testLPTokensCannotBeTransferredToBlockedAccounts() public {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
 
         address blockedAddress = makeAddr("blocked");
         vm.prank(ADMIN);
@@ -1727,7 +1748,7 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testLPTokenCanBeTransferredToDclexVerifiedAccounts() public {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
 
         address verifiedAddress = makeAddr("verified");
         vm.prank(ADMIN);
@@ -2733,7 +2754,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
         feeCurve(0.1 ether, 0)
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
@@ -2754,7 +2775,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
         feeCurve(0.1 ether, 0)
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
@@ -2774,7 +2795,7 @@ contract DclexPoolTest is Test, TestBalance {
     function testWithdrawingAllLiquidityLeavesCollectedProtocolFee() public
         feeCurve(0.1 ether, 0)
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         vm.startPrank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
         vm.stopPrank();
@@ -2806,16 +2827,16 @@ contract DclexPoolTest is Test, TestBalance {
     function testInitializeEmitsLiquidityAddedEvent() external {
         vm.expectEmit(address(aaplPool));
         emit LiquidityAdded(200 ether, 100 ether, 100e6);
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         vm.expectEmit(address(nvdaPool));
         emit LiquidityAdded(230 ether, 110 ether, 120e6);
-        nvdaPool.initialize(110 ether, 120e6, PRICE_DATA);
+        nvdaPool.initialize(110 ether, 120e6, address(this), PRICE_DATA);
     }
 
     function testAddLiquidityEmitsLiquidityAddedEvent() external {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
-        nvdaPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
+        nvdaPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         vm.expectEmit(address(aaplPool));
         emit LiquidityAdded(10 ether, 5 ether, 5e6);
@@ -2827,8 +2848,8 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testRemoveLiquidityEmitsLiquidityRemovedEvent() external {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
-        nvdaPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
+        nvdaPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
 
         vm.expectEmit(address(aaplPool));
         emit LiquidityRemoved(10 ether, 5 ether, 5e6);
@@ -2959,7 +2980,7 @@ contract DclexPoolTest is Test, TestBalance {
 
         vm.expectEmit(address(aaplPool));
         emit LiquidityAdded(21 ether, 1 ether, 1e6);
-        aaplPool.initialize{value: expectedFee}(1 ether, 1e6, priceData);
+        aaplPool.initialize{value: expectedFee}(1 ether, 1e6, address(this), priceData);
     }
 
     function testInitializeRefundsLeftoverEther() external {
@@ -2968,7 +2989,7 @@ contract DclexPoolTest is Test, TestBalance {
         uint256 expectedFee = priceOracle.getUpdateFee(priceData);
 
         uint256 ethBalanceBefore = address(this).balance;
-        aaplPool.initialize{value: 1 ether}(1 ether, 1e6, priceData);
+        aaplPool.initialize{value: 1 ether}(1 ether, 1e6, address(this), priceData);
         uint256 ethBalanceAfter = address(this).balance;
         assertEq(ethBalanceBefore - ethBalanceAfter, expectedFee);
     }
@@ -3096,6 +3117,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0,
+            POOL_ADMIN,
             POOL_ADMIN
         );
     }
@@ -3110,6 +3132,7 @@ contract DclexPoolTest is Test, TestBalance {
             1 ether + 1,
             0,
             0,
+            POOL_ADMIN,
             POOL_ADMIN
         );
 
@@ -3121,6 +3144,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             1 ether + 1,
             0,
+            POOL_ADMIN,
             POOL_ADMIN
         );
     }
@@ -3136,6 +3160,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0.15 ether + 1,
+            POOL_ADMIN,
             POOL_ADMIN
         );
     }
@@ -3151,6 +3176,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0.15 ether,
+            POOL_ADMIN,
             POOL_ADMIN
         );
         assertEq(pool.getProtocolFeeRate(), 0.15 ether);
@@ -3165,6 +3191,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0,
+            POOL_ADMIN,
             POOL_ADMIN
         );
     }
@@ -3179,6 +3206,22 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0,
+            address(0),
+            POOL_ADMIN
+        );
+    }
+
+    function testConstructorRevertsOnZeroInitializer() public {
+        IPriceOracle oracle = helperConfig.getConfig().oracle;
+        vm.expectRevert(DclexPool.DclexPool__ZeroAddress.selector);
+        new DclexPool(
+            aaplStock,
+            IERC20(address(usdcMock)),
+            oracle,
+            0,
+            0,
+            0,
+            POOL_ADMIN,
             address(0)
         );
     }
@@ -3200,14 +3243,14 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testInitializeRevertsOnZeroAmounts() public {
         vm.expectRevert(DclexPool.DclexPool__ZeroLiquidityDeposit.selector);
-        aaplPool.initialize(0, 1000e6, PRICE_DATA);
+        aaplPool.initialize(0, 1000e6, address(this), PRICE_DATA);
 
         vm.expectRevert(DclexPool.DclexPool__ZeroLiquidityDeposit.selector);
-        aaplPool.initialize(1000 ether, 0, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 0, address(this), PRICE_DATA);
     }
 
     function testAddLiquidityRevertsOnZeroDeposit() public {
-        aaplPool.initialize(1000 ether, 1000e6, PRICE_DATA);
+        aaplPool.initialize(1000 ether, 1000e6, address(this), PRICE_DATA);
         // liquidityAmount=0 → both legs round to 0; the guard prevents
         // minting LP for nothing.
         vm.expectRevert(DclexPool.DclexPool__ZeroLiquidityDeposit.selector);
@@ -3320,24 +3363,27 @@ contract DclexPoolTest is Test, TestBalance {
     // ─── Re-init after full LP burn (dclex-infrastructure#336) ─────────────
 
     function testRemoveLiquidityResetsInitializedWhenLastLPExits() public {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
         aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         assertEq(aaplPool.totalSupply(), 0);
         // Initialize must succeed now — pool was de-initialized on last burn.
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        _allowSeed(aaplPool, address(this));
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
         assertGt(aaplPool.totalSupply(), 0);
     }
 
     function testInitializeStillRevertsWhenSupplyNonZero() public {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
-        // Some LP supply still held — initialize must keep reverting.
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
+        // Some LP supply still held — initialize must keep reverting, and the
+        // role is back so it is the flag doing the work, not the gate.
+        _allowSeed(aaplPool, address(this));
         vm.expectRevert(DclexPool.DclexPool__AlreadyInitialized.selector);
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
     }
 
     function testAddLiquidityRevertsAfterFullBurnUntilReinit() public {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
         aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         // Pool is now uninitialized — addLiquidity routes through the same
@@ -3345,13 +3391,15 @@ contract DclexPoolTest is Test, TestBalance {
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
         aaplPool.addLiquidity(1 ether, type(uint256).max, type(uint256).max, block.timestamp);
 
-        // After re-init, addLiquidity works again.
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        // After re-init, addLiquidity works again. The role was revoked by the
+        // first initialize, so the admin has to hand it back.
+        _allowSeed(aaplPool, address(this));
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
         aaplPool.addLiquidity(10 ether, type(uint256).max, type(uint256).max, block.timestamp);
     }
 
     function testSwapRevertsAfterFullBurnUntilReinit() public {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         uint256 lp = aaplPool.totalSupply();
         aaplPool.removeLiquidity(lp, 0, 0, block.timestamp);
         vm.expectRevert(DclexPool.DclexPool__NotInitialized.selector);
@@ -3364,7 +3412,7 @@ contract DclexPoolTest is Test, TestBalance {
         public
         feeCurve(0.1 ether, 0)
     {
-        aaplPool.initialize(100 ether, 100e6, PRICE_DATA);
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
         vm.prank(POOL_ADMIN);
         aaplPool.setProtocolFeeRate(0.1 ether);
 
@@ -3377,12 +3425,13 @@ contract DclexPoolTest is Test, TestBalance {
 
         // Burn all LP — pool de-initializes but protocol fees remain accounted.
         aaplPool.removeLiquidity(aaplPool.totalSupply(), 0, 0, block.timestamp);
+        _allowSeed(aaplPool, address(this));
         (uint256 aaplFeesMid, uint256 usdcFeesMid) = aaplPool.collectedProtocolFees();
         assertEq(aaplFeesMid, aaplFeesBefore);
         assertEq(usdcFeesMid, usdcFeesBefore);
 
         // Re-init and confirm fees still claimable by admin afterwards.
-        aaplPool.initialize(50 ether, 50e6, PRICE_DATA);
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
         vm.prank(POOL_ADMIN);
         aaplPool.withdrawCollectedProtocolFees(RECEIVER_1);
         (uint256 aaplFeesAfter, uint256 usdcFeesAfter) = aaplPool.collectedProtocolFees();
@@ -3574,6 +3623,7 @@ contract DclexPoolTest is Test, TestBalance {
             0,
             0,
             0,
+            POOL_ADMIN,
             POOL_ADMIN
         );
     }
@@ -3586,5 +3636,94 @@ contract DclexPoolTest is Test, TestBalance {
             aaplPool.poolOperationInProgress(),
             "probe must clear once the operation returns"
         );
+    }
+
+    function testInitializeRejectsUnauthorizedCaller() public {
+        address griefer = makeAddr("griefer");
+        setupAccount(griefer);
+        vm.prank(ADMIN);
+        stocksFactory.forceMintStocks("AAPL", griefer, 1 ether);
+        usdcMock.mint(griefer, 1e6);
+        vm.startPrank(griefer);
+        aaplStock.approve(address(aaplPool), 1 ether);
+        usdcMock.approve(address(aaplPool), 1e6);
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "AccessControlUnauthorizedAccount(address,bytes32)",
+                griefer,
+                aaplPool.INITIALIZER_ROLE()
+            )
+        );
+        aaplPool.initialize(1 wei, 1, griefer, PRICE_DATA);
+        vm.stopPrank();
+    }
+
+    function testInitializeRevokesTheSeedingRoleOnSuccess() public {
+        bytes32 role = aaplPool.INITIALIZER_ROLE();
+        assertTrue(aaplPool.hasRole(role, address(this)));
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+        assertFalse(
+            aaplPool.hasRole(role, address(this)),
+            "seeding role must not survive a successful initialize"
+        );
+    }
+
+    function testDrainedPoolIsReseedableOnlyAfterAdminRegrant() public {
+        aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
+        aaplPool.removeLiquidity(aaplPool.totalSupply(), 0, 0, block.timestamp);
+
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "AccessControlUnauthorizedAccount(address,bytes32)",
+                address(this),
+                aaplPool.INITIALIZER_ROLE()
+            )
+        );
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
+
+        _allowSeed(aaplPool, address(this));
+        aaplPool.initialize(50 ether, 50e6, address(this), PRICE_DATA);
+        assertGt(aaplPool.totalSupply(), 0);
+    }
+
+    /// The recipient is DID-verified but holds nothing and has approved nothing,
+    /// so this also pins that the deposits come from the caller.
+    function testInitializeMintsToRecipientNotCaller() public {
+        address treasury = makeAddr("treasury");
+        vm.prank(ADMIN);
+        digitalIdentity.mintAdmin(treasury, 0, bytes32(0));
+
+        uint256 lpBefore = aaplPool.balanceOf(address(this));
+        uint256 stockBefore = aaplStock.balanceOf(address(this));
+        uint256 usdcBefore = usdcMock.balanceOf(address(this));
+
+        aaplPool.initialize(1 ether, 1e6, treasury, PRICE_DATA);
+
+        assertEq(aaplPool.balanceOf(address(this)), lpBefore, "caller must hold no LP");
+        assertGt(aaplPool.balanceOf(treasury), 0, "recipient must hold the genesis LP");
+        assertEq(aaplStock.balanceOf(address(this)), stockBefore - 1 ether, "caller pays the stock leg");
+        assertEq(usdcMock.balanceOf(address(this)), usdcBefore - 1e6, "caller pays the stablecoin leg");
+    }
+
+    function testInitializeRejectsRecipientWithoutDID() public {
+        vm.expectRevert(InvalidDID.selector);
+        aaplPool.initialize(1 ether, 1e6, makeAddr("no_did_treasury"), PRICE_DATA);
+    }
+
+    function testInitializeRevokesTheRoleFromEveryHolderNotJustTheCaller() public {
+        address stray = makeAddr("stray_initializer");
+        _allowSeed(aaplPool, stray);
+        bytes32 role = aaplPool.INITIALIZER_ROLE();
+        assertTrue(aaplPool.hasRole(role, stray));
+
+        aaplPool.initialize(1 ether, 1e6, address(this), PRICE_DATA);
+
+        assertFalse(aaplPool.hasRole(role, address(this)), "the CALLER must lose the seeding role");
+        assertFalse(aaplPool.hasRole(role, stray), "a stray grantee must lose it too");
+    }
+
+    function testInitializeRejectsZeroRecipient() public {
+        vm.expectRevert(DclexPool.DclexPool__ZeroAddress.selector);
+        aaplPool.initialize(1 ether, 1e6, address(0), PRICE_DATA);
     }
 }

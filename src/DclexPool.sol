@@ -13,14 +13,14 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {
     SafeERC20
 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {AccessControlEnumerable} from "@openzeppelin/contracts/access/extensions/AccessControlEnumerable.sol";
 import {
     ReentrancyGuard
 } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IStock} from "dclex-blockchain/contracts/interfaces/IStock.sol";
 
-contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
+contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using SafeERC20 for IStock;
 
@@ -51,6 +51,13 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     /// @notice Hard-coded maximum age of a signed price update accepted by
     ///         this pool. Baked in at deploy — no setter, no per-deploy knob.
     uint256 private constant MAX_PRICE_STALENESS = 60 seconds;
+
+    /// @notice Allows seeding the opening reserves. Every holder loses it as
+    ///         soon as `initialize` succeeds, so a second grantee cannot re-seed
+    ///         a pool that later drains; `DEFAULT_ADMIN_ROLE` grants it again
+    ///         when that is wanted, since `removeLiquidity` clears `initialized`
+    ///         as the last LP exits.
+    bytes32 public constant INITIALIZER_ROLE = keccak256("INITIALIZER_ROLE");
     IPriceOracle public immutable oracle;
     IStock public immutable stockToken;
     IERC20 public immutable stablecoinToken;
@@ -94,7 +101,8 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         uint256 _feeCurveA,
         uint256 _feeCurveB,
         uint256 _protocolFeeRate,
-        address _admin
+        address _admin,
+        address _initializer
     )
         ERC20(
             string.concat(_stockToken.symbol(), "-LP"),
@@ -103,6 +111,7 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
     {
         if (address(_oracle) == address(0)) revert DclexPool__ZeroAddress();
         if (_admin == address(0)) revert DclexPool__ZeroAddress();
+        if (_initializer == address(0)) revert DclexPool__ZeroAddress();
         if (address(_stablecoinToken) == address(0)) revert DclexPool__ZeroAddress();
         // Pool math hard-codes *1e12 scaling between 18-dec stock and 6-dec stablecoin.
         if (
@@ -129,6 +138,7 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         protocolFeeRate = _protocolFeeRate;
         emit ProtocolFeeRateChanged(_protocolFeeRate);
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(INITIALIZER_ROLE, _initializer);
     }
 
     /// @notice Returns the current fee curve parameters
@@ -154,13 +164,33 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         _;
     }
 
+    /// @notice Seed the pool's opening reserves.
+    /// @dev `addLiquidity` is strictly ratio-preserving and swaps at the
+    ///      extremes revert, so the composition the pool opens with cannot be
+    ///      cheaply repaired and forces every later LP into it. Hence the role
+    ///      gate. Note the gate bounds who seeds, not the composition itself:
+    ///      `addLiquidity` reads reserves, so tokens donated to the pool before
+    ///      the seed still shift it — at the donor's own expense.
+    /// @param recipient Receives the LP tokens. The deposits still come from
+    ///        `msg.sender`, so a seeding helper can pay without holding a
+    ///        position it has no way to transfer.
     function initialize(
         uint256 stockAmount,
         uint256 stablecoinAmount,
+        address recipient,
         bytes[] memory priceUpdateData
-    ) public payable nonReentrant {
+    ) public payable nonReentrant onlyRole(INITIALIZER_ROLE) {
         if (initialized) {
             revert DclexPool__AlreadyInitialized();
+        }
+        if (recipient == address(0)) {
+            revert DclexPool__ZeroAddress();
+        }
+        // Both LP exits are DID-gated — transfer here, and removeLiquidity via
+        // the Stock/Stablecoin payouts — so an unverified recipient would hold
+        // a position it could never move or redeem.
+        if (!stockToken.DID().verifyTransfer(recipient, recipient)) {
+            revert InvalidDID();
         }
         if (stockAmount == 0 || stablecoinAmount == 0) {
             revert DclexPool__ZeroLiquidityDeposit();
@@ -172,9 +202,14 @@ contract DclexPool is ERC20, AccessControl, ReentrancyGuard {
         uint256 stablecoinReserveValue = stablecoinAmount * 1e12;
         uint256 liquidityAmount = (stockReserveValue + stablecoinReserveValue);
         initialized = true;
+        // Clear every holder, not just the caller: a stray grantee would
+        // otherwise be able to re-seed the pool once it drains.
+        for (uint256 i = getRoleMemberCount(INITIALIZER_ROLE); i > 0; --i) {
+            _revokeRole(INITIALIZER_ROLE, getRoleMember(INITIALIZER_ROLE, i - 1));
+        }
         stockToken.safeTransferFrom(msg.sender, address(this), stockAmount);
         stablecoinToken.safeTransferFrom(msg.sender, address(this), stablecoinAmount);
-        _mint(msg.sender, liquidityAmount);
+        _mint(recipient, liquidityAmount);
         emit LiquidityAdded(liquidityAmount, stockAmount, stablecoinAmount);
     }
 
