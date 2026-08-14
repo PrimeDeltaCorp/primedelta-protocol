@@ -2294,10 +2294,6 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        // Updated with the fee solver: the previous constant was one refinement
-        // step short of the self-consistent rate, and on this leg the steps
-        // climb toward it. testSellLegsAreExactInverses pins the corrected
-        // value without reference to any hard-coded number.
         assertInputFeeRate(
             0.072176700168747318 ether,
             uint256(-getBalanceChange()),
@@ -3731,17 +3727,6 @@ contract DclexPoolTest is Test, TestBalance {
         aaplPool.initialize(1 ether, 1e6, address(0), PRICE_DATA);
     }
 
-    // ---- Fee rate on the derived-movement legs (PDLT-001 M04 follow-up) ----
-    //
-    // The parity tests above all trade a fraction of a percent of the reserve,
-    // where a one-step fee estimate and the solved rate are indistinguishable.
-    // These trade a large fraction of it, which is where the estimate collapsed:
-    // it was seeded from getBuyFeeRate(gross), an UPPER bound, so the movement
-    // it assumed was always too small and the resulting rate always too low —
-    // reaching the curve's floor once the seed saturated.
-    //
-    // devCurve reproduces the deployed parameters: feeCurveA = feeCurveB = 5e14.
-
     modifier devCurve() {
         _redeployAaplWithLiquidity(0.0025 ether, 0.002 ether);
         _;
@@ -3765,8 +3750,6 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testBuyFeeRateHoldsUpShortOfSaturation() public devCurve {
-        // The seed is ~66% here, so a bare `provisionalRate >= 1e18` guard
-        // never fires and would leave this case exactly as it was.
         assertGt(
             _impliedBuyRate(4985e6),
             0.03 ether,
@@ -3795,10 +3778,6 @@ contract DclexPoolTest is Test, TestBalance {
         assertLt(rate, 0.0027 ether, "small-trade rate moved unexpectedly");
     }
 
-    // The protocol's cut leaves the reserves (`_getReserves` nets it out), so a
-    // pool that takes one moves further on the same trade and must price it
-    // higher. Identical curves, identical reserves, identical trade — the only
-    // difference is protocolFeeRate.
     function testProtocolCutRaisesTheRateOnTheDerivedLeg()
         public
         feeCurve(0.0025 ether, 0.002 ether)
@@ -3822,9 +3801,6 @@ contract DclexPoolTest is Test, TestBalance {
         );
     }
 
-    /// Selling X stock for Y stablecoin and asking for exactly Y back must cost
-    /// exactly X. This is the M04 property stated on the sell side; the derived
-    /// leg previously stopped one refinement short and undercharged.
     function testSellLegsAreExactInverses()
         public
         feeCurve(0.03 ether, 0.01 ether)

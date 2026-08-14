@@ -281,8 +281,6 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
             if (expGrossLow == 0) return;
         }
 
-        // The self-consistency check below has to read PRE-swap reserves, so
-        // learn the charged amount on a throwaway state first.
         uint256 snap = vm.snapshotState();
         uint256 probe;
         try feePool.swapExactOutput(false, scOut, address(this), "", PRICE_DATA) returns (
@@ -290,8 +288,6 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         ) {
             probe = paid;
         } catch {
-            // Hitting the pool's own liquidity limit is a protocol bound, not
-            // the property under test — the same reason the price band exists.
             vm.revertToState(snap);
             return;
         }
@@ -300,8 +296,6 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
             uint256 impliedRate = WAD - Math.mulDiv(netInStock, WAD, probe);
             (bool ok3, uint256 feeAtGot) = _sellFee(probe, p);
             assertTrue(ok3, "sell exact-out: charged movement is unpriceable");
-            // Ceil rounding on the derived gross leaves a sub-ppm residue on
-            // dust trades; the defect this replaces was ~4% of the rate.
             assertApproxEqRel(
                 feeAtGot,
                 impliedRate,
@@ -314,10 +308,6 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         assertEq(got, probe, "sell exact-out: not deterministic across identical state");
 
         assertGe(got, expGrossLow, "sell exact-out: input below the curve(net) bound");
-        // The old upper bound here was one refinement step past `expGrossLow`.
-        // On this leg the steps climb toward the answer, so that was a waypoint
-        // rather than a ceiling, and asserting it pinned the estimate instead of
-        // the property. The self-consistency check above replaces it.
         assertGe(Math.mulDiv(got, p, WAD), outSc18, "sell exact-out: took less than oracle value");
 
         {
