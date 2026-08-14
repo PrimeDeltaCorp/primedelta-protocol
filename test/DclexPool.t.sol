@@ -3821,4 +3821,41 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertApproxEqRel(paidStock, stockIn, 0.000001e18, "sell legs are not inverses");
     }
+
+    function testSellExactOutputPricesAnImbalancedPoolInsteadOfRefusingIt()
+        public
+        devCurve
+    {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.667 ether);
+
+        uint256 paid = aaplPool.swapExactOutput(
+            false, 2500e6, address(this), "", PRICE_DATA
+        );
+
+        assertGt(paid, 2500 ether, "took less than the oracle value");
+        assertLt(paid, 2600 ether, "rate far above the self-consistent one");
+    }
+
+    function testProtocolCutLowersTheRateOnTheDerivedSellLeg()
+        public
+        feeCurve(0.0025 ether, 0.002 ether)
+        nvdaFeeCurve(0.0025 ether, 0.002 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        aaplPool.setProtocolFeeRate(0.15 ether);
+
+        uint256 withCut = aaplPool.swapExactOutput(
+            false, 1000e6, address(this), "", PRICE_DATA
+        );
+        uint256 withoutCut = nvdaPool.swapExactOutput(
+            false, 1000e6, address(this), "", PRICE_DATA
+        );
+
+        assertLt(
+            withCut,
+            withoutCut,
+            "the protocol cut leaving the reserves was not priced in"
+        );
+    }
 }
