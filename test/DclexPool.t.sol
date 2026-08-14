@@ -3875,6 +3875,16 @@ contract DclexPoolTest is Test, TestBalance {
         assertApproxEqRel(received, stockOut, 0.0002e18, "divergence beyond the fee-token split");
     }
 
+    function testSlowConvergingSellIsServedNotRefused() public devCurve {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.8 ether);
+
+        uint256 paid = aaplPool.swapExactOutput(
+            false, 1600e6, address(this), "", PRICE_DATA
+        );
+
+        assertGt(paid, 1600 ether, "took less than the oracle value");
+    }
+
     function testProtocolCutLowersTheRateOnTheDerivedSellLeg()
         public
         feeCurve(0.0025 ether, 0.002 ether)

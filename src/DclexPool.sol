@@ -49,7 +49,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     // (at feeRate == 1e18 the swap returns zero output, never underflows).
     uint256 private constant MAX_FEE_RATE = 1 ether;
     uint256 private constant FEE_RATE_TOLERANCE = 1;
-    uint256 private constant SELL_RATE_ITERATIONS = 64;
+    uint256 private constant SELL_RATE_ITERATIONS = 256;
     /// @notice Hard-coded maximum age of a signed price update accepted by
     ///         this pool. Baked in at deploy — no setter, no per-deploy knob.
     uint256 private constant MAX_PRICE_STALENESS = 60 seconds;
@@ -313,7 +313,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
             if (stablecoinInput) {
                 feeRate = solveBuyFeeRate(grossOutputTokenAmount, stockTokenPrice);
             } else {
-                    feeRate = getSellFeeRate(exactInputAmount, stockTokenPrice);
+                feeRate = getSellFeeRate(exactInputAmount, stockTokenPrice);
             }
 
             netOutputTokenAmount = Math.mulDiv(
