@@ -365,6 +365,15 @@ contract DclexPoolTest is Test, TestBalance {
         assertApproxEqAbsDecimal(feeRate, expectedFeeRate, 0.001 ether, 18);
     }
 
+    function assertInputFeeRateExact(
+        uint256 expectedFeeRate,
+        uint256 inputPaid,
+        uint256 netInput
+    ) public pure {
+        uint256 feeRate = (1e18 * (inputPaid - netInput)) / inputPaid;
+        assertApproxEqAbsDecimal(feeRate, expectedFeeRate, 1e9, 18);
+    }
+
     function assertInputFeeRate(
         uint256 expectedFeeRate,
         uint256 inputPaid,
@@ -2254,8 +2263,8 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
-            0.040869565217391304 ether,
+        assertInputFeeRateExact(
+            0.040890651689850296 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2274,8 +2283,8 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
-            0.046901408450704225 ether,
+        assertInputFeeRateExact(
+            0.046997023835885574 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2294,8 +2303,8 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
-            0.069473684210526316 ether,
+        assertInputFeeRateExact(
+            0.072176700168747318 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -3725,5 +3734,177 @@ contract DclexPoolTest is Test, TestBalance {
     function testInitializeRejectsZeroRecipient() public {
         vm.expectRevert(DclexPool.DclexPool__ZeroAddress.selector);
         aaplPool.initialize(1 ether, 1e6, address(0), PRICE_DATA);
+    }
+
+    modifier devCurve() {
+        _redeployAaplWithLiquidity(0.0025 ether, 0.002 ether);
+        _;
+    }
+
+    function _impliedBuyRate(uint256 usdcIn) private returns (uint256) {
+        uint256 snap = vm.snapshotState();
+        uint256 received = aaplPool.swapExactInput(
+            true, usdcIn, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+        uint256 gross = usdcIn * 1e12;
+        return 1e18 - Math.mulDiv(received, 1e18, gross);
+    }
+
+    function testBuyFeeRateNeverFallsAsTheTradeGrows() public devCurve {
+        uint256 small = _impliedBuyRate(4000e6);
+        uint256 big = _impliedBuyRate(4995e6);
+
+        assertGe(big, small, "a larger buy was charged a lower rate");
+    }
+
+    function testBuyFeeRateHoldsUpShortOfSaturation() public devCurve {
+        assertGt(
+            _impliedBuyRate(4985e6),
+            0.03 ether,
+            "fee collapsed without the seed saturating"
+        );
+    }
+
+    function testReserveDrainingBuyIsNotChargedTheDustRate() public devCurve {
+        uint256 dust = _impliedBuyRate(1e6);
+
+        assertGt(
+            _impliedBuyRate(4995e6),
+            dust * 4,
+            "a buy taking most of the reserve paid the dust rate"
+        );
+    }
+
+    function testPathParityAtSizeOnDevCurve() public devCurve {
+        _assertPathParity(4500 ether);
+    }
+
+    function testOrdinaryBuysAreUnchangedByTheSolver() public devCurve {
+        uint256 rate = _impliedBuyRate(100e6);
+
+        assertApproxEqAbs(
+            rate,
+            2540710513170303,
+            1e7,
+            "an ordinary buy moved by more than a rounding step"
+        );
+    }
+
+    function testProtocolCutRaisesTheRateOnTheDerivedLeg()
+        public
+        feeCurve(0.0025 ether, 0.002 ether)
+        nvdaFeeCurve(0.0025 ether, 0.002 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        aaplPool.setProtocolFeeRate(0.15 ether);
+
+        uint256 withCut = aaplPool.swapExactInput(
+            true, 1000e6, address(this), "", PRICE_DATA
+        );
+        uint256 withoutCut = nvdaPool.swapExactInput(
+            true, 1000e6, address(this), "", PRICE_DATA
+        );
+
+        assertLt(
+            withCut,
+            withoutCut,
+            "the protocol cut leaving the reserves was not priced in"
+        );
+    }
+
+    function testSellLegsAreExactInverses()
+        public
+        feeCurve(0.03 ether, 0.01 ether)
+        liquidityMinted
+    {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.5 ether);
+        uint256 stockIn = (0.6 ether * aaplStock.balanceOf(address(aaplPool))) / 1e18;
+
+        uint256 snap = vm.snapshotState();
+        uint256 usdcOut = aaplPool.swapExactInput(
+            false, stockIn, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+
+        uint256 paidStock = aaplPool.swapExactOutput(
+            false, usdcOut, address(this), "", PRICE_DATA
+        );
+
+        assertApproxEqRel(paidStock, stockIn, 0.000001e18, "sell legs are not inverses");
+    }
+
+    function testSellExactOutputPricesAnImbalancedPoolInsteadOfRefusingIt()
+        public
+        devCurve
+    {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.667 ether);
+
+        uint256 paid = aaplPool.swapExactOutput(
+            false, 2500e6, address(this), "", PRICE_DATA
+        );
+
+        assertGt(paid, 2500 ether, "took less than the oracle value");
+        assertLt(paid, 2600 ether, "rate far above the self-consistent one");
+    }
+
+    function testProtocolCutMakesExactOutputTheCheaperBuyEntryPoint()
+        public
+        feeCurve(0.0025 ether, 0.002 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        aaplPool.setProtocolFeeRate(0.15 ether);
+        uint256 stockOut = 500 ether;
+
+        uint256 snap = vm.snapshotState();
+        uint256 paid = aaplPool.swapExactOutput(
+            true, stockOut, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+        uint256 received = aaplPool.swapExactInput(
+            true, paid, address(this), "", PRICE_DATA
+        );
+
+        assertLt(
+            received,
+            stockOut,
+            "exact-output is expected to be the cheaper buy once a cut is taken"
+        );
+        assertApproxEqRel(received, stockOut, 0.0002e18, "divergence beyond the fee-token split");
+    }
+
+    function testSlowConvergingSellIsServedNotRefused() public devCurve {
+        setPoolStocksProportion(aaplPool, AAPL_PRICE_FEED_ID, 0.8 ether);
+
+        uint256 paid = aaplPool.swapExactOutput(
+            false, 1600e6, address(this), "", PRICE_DATA
+        );
+
+        assertGt(paid, 1600 ether, "took less than the oracle value");
+    }
+
+    function testProtocolCutLowersTheRateOnTheDerivedSellLeg()
+        public
+        feeCurve(0.0025 ether, 0.002 ether)
+        nvdaFeeCurve(0.0025 ether, 0.002 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        aaplPool.setProtocolFeeRate(0.15 ether);
+
+        uint256 withCut = aaplPool.swapExactOutput(
+            false, 1000e6, address(this), "", PRICE_DATA
+        );
+        uint256 withoutCut = nvdaPool.swapExactOutput(
+            false, 1000e6, address(this), "", PRICE_DATA
+        );
+
+        assertLt(
+            withCut,
+            withoutCut,
+            "the protocol cut leaving the reserves was not priced in"
+        );
     }
 }

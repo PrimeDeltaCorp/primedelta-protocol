@@ -268,27 +268,46 @@ contract Fuzz_DclexPoolMath is DclexPoolTest {
         uint256 valBefore;
         {
             (uint256 stockR, uint256 scR18) = feePool.getReserves();
-            scOut = bound(scOut, 1e3, (scR18 / 1e12) / 8);
+            scOut = bound(scOut, 1e3, (scR18 / 1e12) / 2);
             valBefore = _value(stockR, scR18, p);
         }
         uint256 outSc18 = scOut * 1e12;
         uint256 netInStock = Math.mulDiv(outSc18, WAD, p, Math.Rounding.Ceil);
         uint256 expGrossLow;
-        uint256 expGrossHigh;
         {
             (bool ok, uint256 feeAtNet) = _sellFee(netInStock, p);
             if (!ok) return;
             expGrossLow = Math.mulDiv(netInStock, WAD, WAD - feeAtNet, Math.Rounding.Ceil);
             if (expGrossLow == 0) return;
-            (bool ok2, uint256 feeAtGross) = _sellFee(expGrossLow, p);
-            if (!ok2) return;
-            expGrossHigh = Math.mulDiv(netInStock, WAD, WAD - feeAtGross, Math.Rounding.Ceil);
+        }
+
+        uint256 snap = vm.snapshotState();
+        uint256 probe;
+        try feePool.swapExactOutput(false, scOut, address(this), "", PRICE_DATA) returns (
+            uint256 paid
+        ) {
+            probe = paid;
+        } catch {
+            vm.revertToState(snap);
+            return;
+        }
+        vm.revertToState(snap);
+        {
+            uint256 impliedRate = WAD - Math.mulDiv(netInStock, WAD, probe);
+            (bool ok3, uint256 feeAtGot) = _sellFee(probe, p);
+            assertTrue(ok3, "sell exact-out: charged movement is unpriceable");
+            assertApproxEqRel(
+                feeAtGot,
+                impliedRate,
+                0.000001e18,
+                "sell exact-out: charged rate does not price its own movement"
+            );
         }
 
         uint256 got = feePool.swapExactOutput(false, scOut, address(this), "", PRICE_DATA);
+        assertEq(got, probe, "sell exact-out: not deterministic across identical state");
 
         assertGe(got, expGrossLow, "sell exact-out: input below the curve(net) bound");
-        assertLe(got, expGrossHigh, "sell exact-out: input above the curve(gross) bound");
         assertGe(Math.mulDiv(got, p, WAD), outSc18, "sell exact-out: took less than oracle value");
 
         {

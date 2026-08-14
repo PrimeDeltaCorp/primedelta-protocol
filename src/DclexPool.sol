@@ -48,6 +48,8 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     // Caps configured + runtime fee rate so `1e18 - feeRate` stays >= 0
     // (at feeRate == 1e18 the swap returns zero output, never underflows).
     uint256 private constant MAX_FEE_RATE = 1 ether;
+    uint256 private constant FEE_RATE_TOLERANCE = 1;
+    uint256 private constant SELL_RATE_ITERATIONS = 256;
     /// @notice Hard-coded maximum age of a signed price update accepted by
     ///         this pool. Baked in at deploy — no setter, no per-deploy knob.
     uint256 private constant MAX_PRICE_STALENESS = 60 seconds;
@@ -309,13 +311,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
             );
             uint256 feeRate;
             if (stablecoinInput) {
-                uint256 provisionalRate = getBuyFeeRate(
-                    grossOutputTokenAmount, stockTokenPrice
-                );
-                feeRate = getBuyFeeRate(
-                    Math.mulDiv(grossOutputTokenAmount, 1e18 - provisionalRate, 1e18),
-                    stockTokenPrice
-                );
+                feeRate = solveBuyFeeRate(grossOutputTokenAmount, stockTokenPrice);
             } else {
                 feeRate = getSellFeeRate(exactInputAmount, stockTokenPrice);
             }
@@ -405,16 +401,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
             if (stablecoinInput) {
                 feeRate = getBuyFeeRate(exactOutputAmount, stockTokenPrice);
             } else {
-                uint256 provisionalRate = getSellFeeRate(
-                    netInputTokenAmount, stockTokenPrice
-                );
-                if (provisionalRate >= 1e18) revert DclexPool__FeeRateTooHigh();
-                feeRate = getSellFeeRate(
-                    Math.mulDiv(
-                        netInputTokenAmount, 1e18, 1e18 - provisionalRate, Math.Rounding.Ceil
-                    ),
-                    stockTokenPrice
-                );
+                feeRate = solveSellFeeRate(netInputTokenAmount, stockTokenPrice);
             }
             if (feeRate >= 1e18) revert DclexPool__FeeRateTooHigh();
             grossInputTokenAmount = Math.mulDiv(
@@ -507,17 +494,15 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         }
     }
 
-    function getBuyFeeRate(
-        uint256 stockOutputAmount,
+    function buyRateAt(
+        uint256 movement,
+        uint256 stocksRatioBefore,
+        uint256 totalValue,
         uint256 stockPrice
-    ) private view returns (uint256) {
-        (
-            uint256 stocksRatioBefore,
-            uint256 totalValue
-        ) = getStocksRatioTotalValue(stockPrice);
-        uint256 stocksRatioDelta = Math.mulDiv(stockOutputAmount, stockPrice, totalValue);
+    ) private view returns (bool ok, uint256) {
+        uint256 stocksRatioDelta = Math.mulDiv(movement, stockPrice, totalValue);
         if (stocksRatioDelta >= stocksRatioBefore) {
-            revert DclexPool__NotEnoughPoolLiquidity();
+            return (false, MAX_FEE_RATE);
         }
         uint256 stocksRatioAfter = stocksRatioBefore - stocksRatioDelta;
         uint256 ratiosProduct = Math.mulDiv(stocksRatioBefore, stocksRatioAfter, 1e18);
@@ -528,21 +513,19 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         if (ratiosProduct == 0) ratiosProduct = 1;
         uint256 inverseRatiosProduct = 1e36 / ratiosProduct;
         uint256 rate = feeCurveB + Math.mulDiv(feeCurveA, inverseRatiosProduct, 1e18);
-        return rate > MAX_FEE_RATE ? MAX_FEE_RATE : rate;
+        return (true, rate > MAX_FEE_RATE ? MAX_FEE_RATE : rate);
     }
 
-    function getSellFeeRate(
-        uint256 stockInputAmount,
+    function sellRateAt(
+        uint256 movement,
+        uint256 stocksRatioBefore,
+        uint256 totalValue,
         uint256 stockPrice
-    ) private view returns (uint256) {
-        (
-            uint256 stocksRatioBefore,
-            uint256 totalValue
-        ) = getStocksRatioTotalValue(stockPrice);
+    ) private view returns (bool ok, uint256) {
         uint256 stocksRatioAfter = stocksRatioBefore +
-            Math.mulDiv(stockInputAmount, stockPrice, totalValue);
+            Math.mulDiv(movement, stockPrice, totalValue);
         if (stocksRatioAfter >= 1e18) {
-            revert DclexPool__NotEnoughPoolLiquidity();
+            return (false, MAX_FEE_RATE);
         }
         uint256 ratiosProduct = Math.mulDiv(stocksRatioBefore, stocksRatioAfter, 1e18);
         uint256 denom = 1e18 + ratiosProduct - stocksRatioBefore - stocksRatioAfter;
@@ -553,7 +536,115 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         if (denom == 0) denom = 1;
         uint256 inverseRatiosProduct = 1e36 / denom;
         uint256 rate = feeCurveB + Math.mulDiv(feeCurveA, inverseRatiosProduct, 1e18);
-        return rate > MAX_FEE_RATE ? MAX_FEE_RATE : rate;
+        return (true, rate > MAX_FEE_RATE ? MAX_FEE_RATE : rate);
+    }
+
+    function solveBuyFeeRate(
+        uint256 grossOutput,
+        uint256 stockPrice
+    ) private view returns (uint256) {
+        (
+            uint256 stocksRatioBefore,
+            uint256 totalValue
+        ) = getStocksRatioTotalValue(stockPrice);
+        uint256 lpShare = 1e18 - protocolFeeRate;
+        (bool okGross, ) = buyRateAt(
+            grossOutput, stocksRatioBefore, totalValue, stockPrice
+        );
+        if (!okGross) revert DclexPool__NotEnoughPoolLiquidity();
+
+        uint256 lo = 0;
+        uint256 hi = MAX_FEE_RATE;
+        while (hi - lo > FEE_RATE_TOLERANCE) {
+            uint256 mid = (lo + hi) / 2;
+            uint256 movement = Math.mulDiv(
+                grossOutput,
+                1e18 - Math.mulDiv(mid, lpShare, 1e18),
+                1e18,
+                Math.Rounding.Ceil
+            );
+            (bool ok, uint256 rate) = buyRateAt(
+                movement, stocksRatioBefore, totalValue, stockPrice
+            );
+            if (!ok || rate > mid) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        (bool okLo, uint256 rateLo) = buyRateAt(
+            Math.mulDiv(
+                grossOutput,
+                1e18 - Math.mulDiv(lo, lpShare, 1e18),
+                1e18,
+                Math.Rounding.Ceil
+            ),
+            stocksRatioBefore,
+            totalValue,
+            stockPrice
+        );
+        uint256 solved = (okLo && rateLo <= lo) ? lo : hi;
+        if (solved >= MAX_FEE_RATE) revert DclexPool__FeeRateTooHigh();
+        return solved;
+    }
+
+    function solveSellFeeRate(
+        uint256 netInput,
+        uint256 stockPrice
+    ) private view returns (uint256) {
+        (
+            uint256 stocksRatioBefore,
+            uint256 totalValue
+        ) = getStocksRatioTotalValue(stockPrice);
+        uint256 protocolShare = protocolFeeRate;
+
+        uint256 rate = 0;
+        for (uint256 i = 0; i < SELL_RATE_ITERATIONS; ++i) {
+            uint256 movement = Math.mulDiv(
+                netInput,
+                1e18 - Math.mulDiv(rate, protocolShare, 1e18),
+                1e18 - rate,
+                Math.Rounding.Ceil
+            );
+            (bool ok, uint256 next) = sellRateAt(
+                movement, stocksRatioBefore, totalValue, stockPrice
+            );
+            if (!ok) revert DclexPool__NotEnoughPoolLiquidity();
+            if (next >= MAX_FEE_RATE) revert DclexPool__FeeRateTooHigh();
+            if (next <= rate) return rate;
+            rate = next;
+        }
+        revert DclexPool__FeeRateTooHigh();
+    }
+
+    function getBuyFeeRate(
+        uint256 stockOutputAmount,
+        uint256 stockPrice
+    ) private view returns (uint256) {
+        (
+            uint256 stocksRatioBefore,
+            uint256 totalValue
+        ) = getStocksRatioTotalValue(stockPrice);
+        (bool ok, uint256 rate) = buyRateAt(
+            stockOutputAmount, stocksRatioBefore, totalValue, stockPrice
+        );
+        if (!ok) revert DclexPool__NotEnoughPoolLiquidity();
+        return rate;
+    }
+
+    function getSellFeeRate(
+        uint256 stockInputAmount,
+        uint256 stockPrice
+    ) private view returns (uint256) {
+        (
+            uint256 stocksRatioBefore,
+            uint256 totalValue
+        ) = getStocksRatioTotalValue(stockPrice);
+        (bool ok, uint256 rate) = sellRateAt(
+            stockInputAmount, stocksRatioBefore, totalValue, stockPrice
+        );
+        if (!ok) revert DclexPool__NotEnoughPoolLiquidity();
+        return rate;
     }
 
     function getStocksRatioTotalValue(
