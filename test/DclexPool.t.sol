@@ -365,6 +365,15 @@ contract DclexPoolTest is Test, TestBalance {
         assertApproxEqAbsDecimal(feeRate, expectedFeeRate, 0.001 ether, 18);
     }
 
+    function assertInputFeeRateExact(
+        uint256 expectedFeeRate,
+        uint256 inputPaid,
+        uint256 netInput
+    ) public pure {
+        uint256 feeRate = (1e18 * (inputPaid - netInput)) / inputPaid;
+        assertApproxEqAbsDecimal(feeRate, expectedFeeRate, 1e9, 18);
+    }
+
     function assertInputFeeRate(
         uint256 expectedFeeRate,
         uint256 inputPaid,
@@ -2254,8 +2263,8 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
-            0.040869565217391304 ether,
+        assertInputFeeRateExact(
+            0.040890651689850296 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2274,8 +2283,8 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
-            0.046901408450704225 ether,
+        assertInputFeeRateExact(
+            0.046997023835885574 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
         );
@@ -2294,7 +2303,7 @@ contract DclexPoolTest is Test, TestBalance {
             "",
             PRICE_DATA
         );
-        assertInputFeeRate(
+        assertInputFeeRateExact(
             0.072176700168747318 ether,
             uint256(-getBalanceChange()),
             swapSizeInStocks
@@ -3774,8 +3783,12 @@ contract DclexPoolTest is Test, TestBalance {
     function testOrdinaryBuysAreUnchangedByTheSolver() public devCurve {
         uint256 rate = _impliedBuyRate(100e6);
 
-        assertGt(rate, 0.0025 ether, "small-trade rate moved unexpectedly");
-        assertLt(rate, 0.0027 ether, "small-trade rate moved unexpectedly");
+        assertApproxEqAbs(
+            rate,
+            2540710513170303,
+            1e7,
+            "an ordinary buy moved by more than a rounding step"
+        );
     }
 
     function testProtocolCutRaisesTheRateOnTheDerivedLeg()
@@ -3834,6 +3847,32 @@ contract DclexPoolTest is Test, TestBalance {
 
         assertGt(paid, 2500 ether, "took less than the oracle value");
         assertLt(paid, 2600 ether, "rate far above the self-consistent one");
+    }
+
+    function testProtocolCutMakesExactOutputTheCheaperBuyEntryPoint()
+        public
+        feeCurve(0.0025 ether, 0.002 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        aaplPool.setProtocolFeeRate(0.15 ether);
+        uint256 stockOut = 500 ether;
+
+        uint256 snap = vm.snapshotState();
+        uint256 paid = aaplPool.swapExactOutput(
+            true, stockOut, address(this), "", PRICE_DATA
+        );
+        vm.revertToState(snap);
+        uint256 received = aaplPool.swapExactInput(
+            true, paid, address(this), "", PRICE_DATA
+        );
+
+        assertLt(
+            received,
+            stockOut,
+            "exact-output is expected to be the cheaper buy once a cut is taken"
+        );
+        assertApproxEqRel(received, stockOut, 0.0002e18, "divergence beyond the fee-token split");
     }
 
     function testProtocolCutLowersTheRateOnTheDerivedSellLeg()
