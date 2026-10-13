@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # lib/dclex-blockchain is a private PrimeDeltaCorp repo, so the default
       # GITHUB_TOKEN cannot fetch it. SUBMODULE_TOKEN must be a PAT (or app
