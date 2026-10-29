@@ -67,7 +67,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     bool private initialized = false;
     uint256 private immutable feeCurveA;
     uint256 private immutable feeCurveB;
-    uint256 private protocolFeeRate;
+    uint256 private immutable protocolFeeRate;
     uint256 private collectedProtocolFeesStock;
     uint256 private collectedProtocolFeesStablecoin;
 
@@ -655,16 +655,6 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         uint256 totalValue = stocksValue + stablecoinReserve;
         uint256 stocksRatio = Math.mulDiv(1e18, stocksValue, totalValue);
         return (stocksRatio, totalValue);
-    }
-
-    function setProtocolFeeRate(
-        uint256 _protocolFeeRate
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_protocolFeeRate > MAX_PROTOCOL_FEE_RATE) {
-            revert DclexPool__ProtocolFeeRateTooHigh();
-        }
-        protocolFeeRate = _protocolFeeRate;
-        emit ProtocolFeeRateChanged(_protocolFeeRate);
     }
 
     function getProtocolFeeRate() external view returns (uint256) {

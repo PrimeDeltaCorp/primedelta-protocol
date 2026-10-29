@@ -9,8 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract DeployDclexPool is Script {
     // 15% protocol cut on swap fees — chain-wide default, baked into
-    // every pool at deploy so the cast-by-cast post-deploy
-    // setProtocolFeeRate dance can't be skipped (dclex-infrastructure#256).
+    // every pool at deploy.
     uint256 public constant DEFAULT_PROTOCOL_FEE_RATE = 0.15 ether;
 
     function run(

@@ -215,9 +215,9 @@ contract DclexPoolTest is Test, TestBalance {
     // pool via these helpers and the `feeCurve` / `nvdaFeeCurve`
     // modifiers below. `deploy` (no broadcast) is used so the redeploy
     // composes with active pranks inside modifiers.
-    function _redeployAaplPool(uint256 feeA, uint256 feeB) private {
+    function _redeployAaplPool(uint256 feeA, uint256 feeB, uint256 protocolFeeRate) private {
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        aaplPool = poolDeployer.deploy(aaplStock, helperConfig, feeA, feeB, 0, address(this));
+        aaplPool = poolDeployer.deploy(aaplStock, helperConfig, feeA, feeB, protocolFeeRate, address(this));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(aaplPool), 0, bytes32(0));
         _approveAaplPool(address(this));
@@ -227,9 +227,9 @@ contract DclexPoolTest is Test, TestBalance {
         _approveAaplPool(address(routerMock2));
     }
 
-    function _redeployNvdaPool(uint256 feeA, uint256 feeB) private {
+    function _redeployNvdaPool(uint256 feeA, uint256 feeB, uint256 protocolFeeRate) private {
         DeployDclexPool poolDeployer = new DeployDclexPool();
-        nvdaPool = poolDeployer.deploy(nvdaStock, helperConfig, feeA, feeB, 0, address(this));
+        nvdaPool = poolDeployer.deploy(nvdaStock, helperConfig, feeA, feeB, protocolFeeRate, address(this));
         vm.prank(ADMIN);
         digitalIdentity.mintAdmin(address(nvdaPool), 0, bytes32(0));
         _approveNvdaPool(address(this));
@@ -246,12 +246,30 @@ contract DclexPoolTest is Test, TestBalance {
     // Place this modifier BEFORE liquidityMinted so the pool is
     // redeployed before liquidity gets minted into it.
     modifier feeCurve(uint256 baseFeeRate, uint256 sensitivity) {
-        _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity);
+        _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity, 0);
         _;
     }
 
     modifier nvdaFeeCurve(uint256 baseFeeRate, uint256 sensitivity) {
-        _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity);
+        _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity, 0);
+        _;
+    }
+
+    modifier feeCurveAndProtocolFee(
+        uint256 baseFeeRate,
+        uint256 sensitivity,
+        uint256 protocolFeeRate
+    ) {
+        _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity, protocolFeeRate);
+        _;
+    }
+
+    modifier nvdaFeeCurveAndProtocolFee(
+        uint256 baseFeeRate,
+        uint256 sensitivity,
+        uint256 protocolFeeRate
+    ) {
+        _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity, protocolFeeRate);
         _;
     }
 
@@ -263,7 +281,7 @@ contract DclexPoolTest is Test, TestBalance {
         uint256 baseFeeRate,
         uint256 sensitivity
     ) private {
-        _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity);
+        _redeployAaplPool(sensitivity / 4, baseFeeRate - sensitivity, 0);
         address liquidityProvider = makeAddr("liquidityProvider");
         vm.startPrank(POOL_ADMIN);
         aaplPool.grantRole(aaplPool.INITIALIZER_ROLE(), liquidityProvider);
@@ -290,7 +308,7 @@ contract DclexPoolTest is Test, TestBalance {
         uint256 baseFeeRate,
         uint256 sensitivity
     ) private {
-        _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity);
+        _redeployNvdaPool(sensitivity / 4, baseFeeRate - sensitivity, 0);
         address liquidityProvider = makeAddr("liquidityProvider");
         vm.startPrank(POOL_ADMIN);
         aaplPool.grantRole(aaplPool.INITIALIZER_ROLE(), liquidityProvider);
@@ -2422,15 +2440,12 @@ contract DclexPoolTest is Test, TestBalance {
         );
     }
 
-    function testSellExactInputUsdcProtocolFeeIsProportionalToSetProtocolFeeRate()
+    function testSellExactInputUsdcProtocolFeeIsProportionalToProtocolFeeRate()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        nvdaFeeCurveAndProtocolFee(0.1 ether, 0, 0.15 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0);
         assertEq(aaplFees, 0);
@@ -2440,12 +2455,10 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(usdcFees, 0.01 ether);
         assertEq(aaplFees, 0);
 
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 0.015 USDC fee
-        (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(usdcFees, 0.01 ether + 0.015 ether);
-        assertEq(aaplFees, 0);
+        nvdaPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 0.015 USDC fee
+        (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaUsdcFees, 0.015 ether);
+        assertEq(nvdaFees, 0);
     }
 
     // Each fee curve now requires a fresh pool deploy (immutable
@@ -2455,11 +2468,9 @@ contract DclexPoolTest is Test, TestBalance {
     // invariant is what's being tested.
     function testSellExactInputUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1ether()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 0.05 USDC fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0.005 ether);
@@ -2468,11 +2479,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testSellExactInputUsdcProtocolFeeIsProportionalToSwapFee_008Fee_1ether()
         public
-        feeCurve(0.08 ether, 0)
+        feeCurveAndProtocolFee(0.08 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA); // 0.08 USDC fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0.008 ether);
@@ -2481,26 +2490,21 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testSellExactInputUsdcProtocolFeeIsProportionalToSwapFee_005Fee_2ether()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(false, 2 ether, address(this), "", PRICE_DATA); // 0.1 USDC fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0.01 ether);
         assertEq(aaplFees, 0);
     }
 
-    function testBuyExactInputUsdcProtocolFeeIsProportionalToSetProtocolFeeRate()
+    function testBuyExactInputUsdcProtocolFeeIsProportionalToProtocolFeeRate()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        nvdaFeeCurveAndProtocolFee(0.1 ether, 0, 0.15 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0);
         assertEq(aaplFees, 0);
@@ -2510,21 +2514,17 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(usdcFees, 0);
         assertEq(aaplFees, 0.01 ether);
 
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.015 AAPL fee
-        (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(usdcFees, 0);
-        assertEq(aaplFees, 0.01 ether + 0.015 ether);
+        nvdaPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.015 AAPL fee
+        (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaUsdcFees, 0);
+        assertEq(nvdaFees, 0.015 ether);
     }
 
     function testBuyExactInputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1e6()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.05 AAPL fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0);
@@ -2533,11 +2533,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testBuyExactInputCollectedUsdcProtocolFeeIsProportionalToSwapFee_008Fee_1e6()
         public
-        feeCurve(0.08 ether, 0)
+        feeCurveAndProtocolFee(0.08 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.08 AAPL fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0);
@@ -2546,26 +2544,21 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testBuyExactInputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_2e6()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactInput(true, 2e6, address(this), "", PRICE_DATA); // 0.1 AAPL fee
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 0);
         assertEq(aaplFees, 0.01 ether);
     }
 
-    function testSellExactOutputUsdcProtocolFeeIsProportionalToSetProtocolFeeRate()
+    function testSellExactOutputUsdcProtocolFeeIsProportionalToProtocolFeeRate()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        nvdaFeeCurveAndProtocolFee(0.1 ether, 0, 0.15 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
         assertEq(usdcFees, 0);
@@ -2575,21 +2568,17 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplFees, 11111111111111111);
         assertEq(usdcFees, 0);
 
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
-        (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 11111111111111111 + 16666666666666666);
-        assertEq(usdcFees, 0);
+        nvdaPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
+        (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaFees, 16666666666666666);
+        assertEq(nvdaUsdcFees, 0);
     }
 
     function testSellExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1e6()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 5263157894736842);
@@ -2598,11 +2587,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testSellExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_008Fee_1e6()
         public
-        feeCurve(0.08 ether, 0)
+        feeCurveAndProtocolFee(0.08 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 8695652173913043);
@@ -2611,26 +2598,21 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testSellExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_2e6()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(false, 2e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 10526315789473684);
         assertEq(usdcFees, 0);
     }
 
-    function testBuyExactOutputUsdcProtocolFeeIsProportionalToSetProtocolFeeRate()
+    function testBuyExactOutputUsdcProtocolFeeIsProportionalToProtocolFeeRate()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        nvdaFeeCurveAndProtocolFee(0.1 ether, 0, 0.15 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
         assertEq(usdcFees, 0);
@@ -2640,21 +2622,17 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplFees, 0);
         assertEq(usdcFees, 11111111111111111);
 
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-        aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
-        (aaplFees, usdcFees) = aaplPool.collectedProtocolFees();
-        assertEq(aaplFees, 0);
-        assertEq(usdcFees, 11111111111111111 + 16666666666666666);
+        nvdaPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
+        (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaFees, 0);
+        assertEq(nvdaUsdcFees, 16666666666666666);
     }
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1ether()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
@@ -2663,11 +2641,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_008Fee_1ether()
         public
-        feeCurve(0.08 ether, 0)
+        feeCurveAndProtocolFee(0.08 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
@@ -2676,11 +2652,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_2ether()
         public
-        feeCurve(0.05 ether, 0)
+        feeCurveAndProtocolFee(0.05 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
         aaplPool.swapExactOutput(true, 2 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 0);
@@ -2689,12 +2663,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testWithdrawCollectedProtocolFeesSendsCollectedStockProtocolFees()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA);
         (uint256 aaplFees, ) = aaplPool.collectedProtocolFees();
         assertEq(aaplFees, 3333333333333333333);
@@ -2714,12 +2685,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testWithdrawCollectedProtocolFeesSendsCollectedUsdcProtocolFees()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(true, 300 ether, address(this), "", PRICE_DATA);
         (, uint256 usdcFees) = aaplPool.collectedProtocolFees();
         assertEq(usdcFees, 3333333333333333333);
@@ -2739,12 +2707,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testWithdrawCollectedProtocolFeesResetsCollectedProtocolFees()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA);
         aaplPool.swapExactOutput(true, 500 ether, address(this), "", PRICE_DATA);
         (uint256 aaplFees, uint256 usdcFees) = aaplPool.collectedProtocolFees();
@@ -2761,12 +2726,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testAddingLiquidityDoesNotTakeCollectedStocksProtocolFeesIntoAccount()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
     {
         aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(false, 20e6, address(this), "", PRICE_DATA);
 
         recordBalance(address(aaplStock), address(this));
@@ -2782,12 +2744,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testAddingLiquidityDoesNotTakeCollectedUsdcProtocolFeesIntoAccount()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
     {
         aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(true, 20 ether, address(this), "", PRICE_DATA); // 0.2 USDC protocol fee
 
         recordBalance(address(usdcMock), address(this));
@@ -2802,12 +2761,9 @@ contract DclexPoolTest is Test, TestBalance {
     }
 
     function testWithdrawingAllLiquidityLeavesCollectedProtocolFee() public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
     {
         aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
         aaplPool.swapExactOutput(false, 30e6, address(this), "", PRICE_DATA);
         aaplPool.swapExactOutput(true, 50 ether, address(this), "", PRICE_DATA);
 
@@ -2901,32 +2857,12 @@ contract DclexPoolTest is Test, TestBalance {
         nvdaPool.swapExactOutput(false, 300e6, USER_2, "", PRICE_DATA);
     }
 
-    function testSetProtocolFeeRateEmitsProtocolFeeRateChanged()
-        external
-        liquidityMinted
-    {
-        vm.prank(POOL_ADMIN);
-        vm.expectEmit(address(aaplPool));
-        emit ProtocolFeeRateChanged(0.1 ether);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-
-        vm.prank(POOL_ADMIN);
-        vm.expectEmit(address(nvdaPool));
-        emit ProtocolFeeRateChanged(0.15 ether);
-        nvdaPool.setProtocolFeeRate(0.15 ether);
-    }
-
     function testWithdrawCollectedProtocolFeesEmitsProtocolFeeWithdrawn()
         external
-        feeCurve(0.1 ether, 0)
-        nvdaFeeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        nvdaFeeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        nvdaPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         aaplPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.01 AAPL protocol fee
         vm.expectEmit(address(aaplPool));
         emit ProtocolFeeWithdrawn(0.01 ether, 0, USER_1);
@@ -3080,32 +3016,34 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(ethBalanceBefore - ethBalanceAfter, expectedFee);
     }
 
-    function testProtocolFeeRateCannotBeSetHigherThan15Percent() external {
-        vm.startPrank(POOL_ADMIN);
-        vm.expectRevert(DclexPool.DclexPool__ProtocolFeeRateTooHigh.selector);
-        aaplPool.setProtocolFeeRate(0.2 ether);
-
-        vm.expectRevert(DclexPool.DclexPool__ProtocolFeeRateTooHigh.selector);
-        aaplPool.setProtocolFeeRate(0.15 ether + 1);
-
-        aaplPool.setProtocolFeeRate(0.15 ether);
-        vm.stopPrank();
+    function testProtocolFeeRateCannotBeChangedAfterDeployment()
+        external
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.15 ether)
+        liquidityMinted
+    {
+        vm.prank(POOL_ADMIN);
+        (bool ok, ) = address(aaplPool).call(
+            abi.encodeWithSignature("setProtocolFeeRate(uint256)", 0)
+        );
+        assertFalse(ok);
+        assertEq(aaplPool.getProtocolFeeRate(), 0.15 ether);
     }
 
     function testGetProtocolFeeRateDefaultsToZero() public view {
-        // protocolFeeRate is not set in the ctor — defaults to storage zero.
         assertEq(aaplPool.getProtocolFeeRate(), 0);
     }
 
-    function testGetProtocolFeeRateReflectsSetter() public {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.05 ether);
+    function testGetProtocolFeeRateReflectsConstructor()
+        public
+        feeCurveAndProtocolFee(0, 0, 0.05 ether)
+    {
         assertEq(aaplPool.getProtocolFeeRate(), 0.05 ether);
     }
 
-    function testGetProtocolFeeRateAtMaxBound() public {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
+    function testGetProtocolFeeRateAtMaxBound()
+        public
+        feeCurveAndProtocolFee(0, 0, 0.15 ether)
+    {
         assertEq(aaplPool.getProtocolFeeRate(), 0.15 ether);
     }
 
@@ -3294,13 +3232,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testGetReservesSubtractsCollectedProtocolFees()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         // Buy: takes USDC, collects USDC protocol fee.
         aaplPool.swapExactOutput(true, 300 ether, address(this), "", PRICE_DATA);
         // Sell: takes AAPL, collects AAPL protocol fee.
@@ -3329,13 +3263,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testGetReservesIsConsistentAcrossLpMintAndBurn()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
         liquidityMinted
     {
-        vm.startPrank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
-        vm.stopPrank();
-
         // Generate some protocol fees first.
         aaplPool.swapExactOutput(true, 200 ether, address(this), "", PRICE_DATA);
 
@@ -3419,11 +3349,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testProtocolFeesSurviveAcrossReinit()
         public
-        feeCurve(0.1 ether, 0)
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
     {
         aaplPool.initialize(100 ether, 100e6, address(this), PRICE_DATA);
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.1 ether);
 
         // Generate protocol fees in both tokens.
         aaplPool.swapExactOutput(false, 30e6, address(this), "", PRICE_DATA);
@@ -3793,13 +3721,10 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testProtocolCutRaisesTheRateOnTheDerivedLeg()
         public
-        feeCurve(0.0025 ether, 0.002 ether)
+        feeCurveAndProtocolFee(0.0025 ether, 0.002 ether, 0.15 ether)
         nvdaFeeCurve(0.0025 ether, 0.002 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-
         uint256 withCut = aaplPool.swapExactInput(
             true, 1000e6, address(this), "", PRICE_DATA
         );
@@ -3851,11 +3776,9 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testProtocolCutMakesExactOutputTheCheaperBuyEntryPoint()
         public
-        feeCurve(0.0025 ether, 0.002 ether)
+        feeCurveAndProtocolFee(0.0025 ether, 0.002 ether, 0.15 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
         uint256 stockOut = 500 ether;
 
         uint256 snap = vm.snapshotState();
@@ -3887,13 +3810,10 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testProtocolCutLowersTheRateOnTheDerivedSellLeg()
         public
-        feeCurve(0.0025 ether, 0.002 ether)
+        feeCurveAndProtocolFee(0.0025 ether, 0.002 ether, 0.15 ether)
         nvdaFeeCurve(0.0025 ether, 0.002 ether)
         liquidityMinted
     {
-        vm.prank(POOL_ADMIN);
-        aaplPool.setProtocolFeeRate(0.15 ether);
-
         uint256 withCut = aaplPool.swapExactOutput(
             false, 1000e6, address(this), "", PRICE_DATA
         );
