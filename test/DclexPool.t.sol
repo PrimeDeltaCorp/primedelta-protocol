@@ -2459,6 +2459,11 @@ contract DclexPoolTest is Test, TestBalance {
         (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
         assertEq(nvdaUsdcFees, 0.015 ether);
         assertEq(nvdaFees, 0);
+
+        nvdaPool.swapExactInput(false, 1 ether, address(this), "", PRICE_DATA);
+        (nvdaFees, nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaUsdcFees, 0.015 ether + 0.015 ether);
+        assertEq(nvdaFees, 0);
     }
 
     // Each fee curve now requires a fresh pool deploy (immutable
@@ -2514,10 +2519,15 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(usdcFees, 0);
         assertEq(aaplFees, 0.01 ether);
 
-        nvdaPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.015 AAPL fee
+        nvdaPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA); // 0.015 NVDA fee
         (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
         assertEq(nvdaUsdcFees, 0);
         assertEq(nvdaFees, 0.015 ether);
+
+        nvdaPool.swapExactInput(true, 1e6, address(this), "", PRICE_DATA);
+        (nvdaFees, nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaUsdcFees, 0);
+        assertEq(nvdaFees, 0.015 ether + 0.015 ether);
     }
 
     function testBuyExactInputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1e6()
@@ -2571,6 +2581,11 @@ contract DclexPoolTest is Test, TestBalance {
         nvdaPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
         (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
         assertEq(nvdaFees, 16666666666666666);
+        assertEq(nvdaUsdcFees, 0);
+
+        nvdaPool.swapExactOutput(false, 1e6, address(this), "", PRICE_DATA);
+        (nvdaFees, nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaFees, 16666666666666666 + 16666666666666666);
         assertEq(nvdaUsdcFees, 0);
     }
 
@@ -2626,6 +2641,11 @@ contract DclexPoolTest is Test, TestBalance {
         (uint256 nvdaFees, uint256 nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
         assertEq(nvdaFees, 0);
         assertEq(nvdaUsdcFees, 16666666666666666);
+
+        nvdaPool.swapExactOutput(true, 1 ether, address(this), "", PRICE_DATA);
+        (nvdaFees, nvdaUsdcFees) = nvdaPool.collectedProtocolFees();
+        assertEq(nvdaFees, 0);
+        assertEq(nvdaUsdcFees, 16666666666666666 + 16666666666666666);
     }
 
     function testBuyExactOutputCollectedUsdcProtocolFeeIsProportionalToSwapFee_005Fee_1ether()
@@ -3029,7 +3049,7 @@ contract DclexPoolTest is Test, TestBalance {
         assertEq(aaplPool.getProtocolFeeRate(), 0.15 ether);
     }
 
-    function testGetProtocolFeeRateDefaultsToZero() public view {
+    function testGetProtocolFeeRateIsZeroWhenDeployedAtZero() public view {
         assertEq(aaplPool.getProtocolFeeRate(), 0);
     }
 
