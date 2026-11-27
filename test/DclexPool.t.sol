@@ -105,6 +105,8 @@ contract DclexPoolTest is Test, TestBalance {
         vm.stopPrank();
         aaplStock = Stock(stocksFactory.stocks("AAPL"));
         nvdaStock = Stock(stocksFactory.stocks("NVDA"));
+        vm.prank(ADMIN);
+        digitalIdentity.mintAdmin(FEE_RECIPIENT, 0, bytes32(0));
         DeployDclexPool poolDeployer = new DeployDclexPool();
         aaplPool = poolDeployer.run(aaplStock, helperConfig, 0, 0, 0, address(this));
         nvdaPool = poolDeployer.run(nvdaStock, helperConfig, 0, 0, 0, address(this));
@@ -122,7 +124,6 @@ contract DclexPoolTest is Test, TestBalance {
         vm.startPrank(ADMIN);
         digitalIdentity.mintAdmin(RECEIVER_1, 0, bytes32(0));
         digitalIdentity.mintAdmin(RECEIVER_2, 0, bytes32(0));
-        digitalIdentity.mintAdmin(FEE_RECIPIENT, 0, bytes32(0));
         console.log(digitalIdentity.verifyTransfer(RECEIVER_1, RECEIVER_2));
         console.log(address(digitalIdentity));
         vm.stopPrank();
@@ -3229,7 +3230,7 @@ contract DclexPoolTest is Test, TestBalance {
 
     function testConstructorEmitsFeeRecipientChanged() public {
         IPriceOracle oracle = helperConfig.getConfig().oracle;
-        vm.expectEmit();
+        vm.expectEmit(vm.computeCreateAddress(address(this), vm.getNonce(address(this))));
         emit FeeRecipientChanged(RECEIVER_1);
         new DclexPool(
             aaplStock,
@@ -3242,6 +3243,62 @@ contract DclexPoolTest is Test, TestBalance {
             RECEIVER_1,
             POOL_ADMIN
         );
+    }
+
+    function testConstructorRevertsWhenFeeRecipientHasNoDid() public {
+        IPriceOracle oracle = helperConfig.getConfig().oracle;
+        vm.expectRevert(InvalidDID.selector);
+        new DclexPool(
+            aaplStock,
+            IERC20(address(usdcMock)),
+            oracle,
+            0,
+            0,
+            0,
+            POOL_ADMIN,
+            makeAddr("recipient_without_did"),
+            POOL_ADMIN
+        );
+    }
+
+    function testSetFeeRecipientRevertsWhenRecipientHasNoDid() public {
+        address noDid = makeAddr("recipient_without_did");
+        vm.expectRevert(InvalidDID.selector);
+        vm.prank(POOL_ADMIN);
+        aaplPool.setFeeRecipient(noDid);
+        assertEq(aaplPool.feeRecipient(), FEE_RECIPIENT);
+    }
+
+    function testSetFeeRecipientRevertsOnThePoolItself() public {
+        vm.expectRevert(DclexPool.DclexPool__InvalidFeeRecipient.selector);
+        vm.prank(POOL_ADMIN);
+        aaplPool.setFeeRecipient(address(aaplPool));
+        assertEq(aaplPool.feeRecipient(), FEE_RECIPIENT);
+    }
+
+    function testWithdrawRevertsWhileTheRecipientDidIsInvalidUntilTheAdminMovesIt()
+        public
+        feeCurveAndProtocolFee(0.1 ether, 0, 0.1 ether)
+        liquidityMinted
+    {
+        aaplPool.swapExactOutput(false, 300e6, address(this), "", PRICE_DATA);
+        uint256[] memory ids = new uint256[](1);
+        uint256[] memory valids = new uint256[](1);
+        ids[0] = digitalIdentity.getId(FEE_RECIPIENT);
+        valids[0] = 2;
+        vm.prank(ADMIN);
+        digitalIdentity.setValids(ids, valids);
+
+        vm.expectRevert(InvalidDID.selector);
+        vm.prank(POOL_ADMIN);
+        aaplPool.withdrawCollectedProtocolFees();
+
+        vm.prank(POOL_ADMIN);
+        aaplPool.setFeeRecipient(RECEIVER_1);
+        uint256 before = aaplStock.balanceOf(RECEIVER_1);
+        vm.prank(POOL_ADMIN);
+        aaplPool.withdrawCollectedProtocolFees();
+        assertEq(aaplStock.balanceOf(RECEIVER_1) - before, 3333333333333333333);
     }
 
     function testSetFeeRecipientChangesWithdrawDestination()

@@ -41,6 +41,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     error DclexPool__InvalidStockDecimals();
     error DclexPool__InvalidStablecoinDecimals();
     error DclexPool__ZeroAddress();
+    error DclexPool__InvalidFeeRecipient();
 
     uint256 private constant MAX_PROTOCOL_FEE_RATE = 0.15 ether;
     uint8 private constant DECIMALS = 18;
@@ -116,7 +117,6 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     {
         if (address(_oracle) == address(0)) revert DclexPool__ZeroAddress();
         if (_admin == address(0)) revert DclexPool__ZeroAddress();
-        if (_feeRecipient == address(0)) revert DclexPool__ZeroAddress();
         if (_initializer == address(0)) revert DclexPool__ZeroAddress();
         if (address(_stablecoinToken) == address(0)) revert DclexPool__ZeroAddress();
         // Pool math hard-codes *1e12 scaling between 18-dec stock and 6-dec stablecoin.
@@ -143,8 +143,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         feeCurveB = _feeCurveB;
         protocolFeeRate = _protocolFeeRate;
         emit ProtocolFeeRateChanged(_protocolFeeRate);
-        feeRecipient = _feeRecipient;
-        emit FeeRecipientChanged(_feeRecipient);
+        _setFeeRecipient(_stockToken, _feeRecipient);
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(INITIALIZER_ROLE, _initializer);
     }
@@ -674,7 +673,15 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     function setFeeRecipient(
         address _feeRecipient
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _setFeeRecipient(stockToken, _feeRecipient);
+    }
+
+    function _setFeeRecipient(IStock _stockToken, address _feeRecipient) private {
         if (_feeRecipient == address(0)) revert DclexPool__ZeroAddress();
+        if (_feeRecipient == address(this)) revert DclexPool__InvalidFeeRecipient();
+        if (!_stockToken.DID().verifyTransfer(_feeRecipient, _feeRecipient)) {
+            revert InvalidDID();
+        }
         feeRecipient = _feeRecipient;
         emit FeeRecipientChanged(_feeRecipient);
     }
