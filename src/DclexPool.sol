@@ -70,6 +70,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     uint256 private immutable protocolFeeRate;
     uint256 private collectedProtocolFeesStock;
     uint256 private collectedProtocolFeesStablecoin;
+    address public feeRecipient;
 
     event LiquidityAdded(
         uint256 addedLiquidity,
@@ -90,6 +91,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         address recipient
     );
     event ProtocolFeeRateChanged(uint256 feeRate);
+    event FeeRecipientChanged(address feeRecipient);
     event ProtocolFeeWithdrawn(
         uint256 stocksWithdrawn,
         uint256 stablecoinWithdrawn,
@@ -104,6 +106,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         uint256 _feeCurveB,
         uint256 _protocolFeeRate,
         address _admin,
+        address _feeRecipient,
         address _initializer
     )
         ERC20(
@@ -113,6 +116,7 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
     {
         if (address(_oracle) == address(0)) revert DclexPool__ZeroAddress();
         if (_admin == address(0)) revert DclexPool__ZeroAddress();
+        if (_feeRecipient == address(0)) revert DclexPool__ZeroAddress();
         if (_initializer == address(0)) revert DclexPool__ZeroAddress();
         if (address(_stablecoinToken) == address(0)) revert DclexPool__ZeroAddress();
         // Pool math hard-codes *1e12 scaling between 18-dec stock and 6-dec stablecoin.
@@ -139,6 +143,8 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         feeCurveB = _feeCurveB;
         protocolFeeRate = _protocolFeeRate;
         emit ProtocolFeeRateChanged(_protocolFeeRate);
+        feeRecipient = _feeRecipient;
+        emit FeeRecipientChanged(_feeRecipient);
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(INITIALIZER_ROLE, _initializer);
     }
@@ -665,9 +671,20 @@ contract DclexPool is ERC20, AccessControlEnumerable, ReentrancyGuard {
         return (collectedProtocolFeesStock, collectedProtocolFeesStablecoin);
     }
 
-    function withdrawCollectedProtocolFees(
-        address receiver
-    ) external nonReentrant onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setFeeRecipient(
+        address _feeRecipient
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_feeRecipient == address(0)) revert DclexPool__ZeroAddress();
+        feeRecipient = _feeRecipient;
+        emit FeeRecipientChanged(_feeRecipient);
+    }
+
+    function withdrawCollectedProtocolFees()
+        external
+        nonReentrant
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        address receiver = feeRecipient;
         uint256 stockFees = collectedProtocolFeesStock;
         uint256 stablecoinFees6 = collectedProtocolFeesStablecoin / 1e12;
         collectedProtocolFeesStock = 0;

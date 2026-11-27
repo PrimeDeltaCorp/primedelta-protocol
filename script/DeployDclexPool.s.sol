@@ -30,6 +30,7 @@ contract DeployDclexPool is Script {
             feeCurveB,
             protocolFeeRate,
             config.admin,
+            config.feeRecipient,
             initializer
         );
         vm.stopBroadcast();
@@ -54,6 +55,7 @@ contract DeployDclexPool is Script {
             feeCurveB,
             protocolFeeRate,
             config.admin,
+            config.feeRecipient,
             initializer
         );
     }
