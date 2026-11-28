@@ -13,6 +13,7 @@ contract HelperConfig is Script {
 
     struct NetworkConfig {
         address admin;
+        address feeRecipient;
         IERC20 dusdToken;
         IPriceOracle oracle;
     }
@@ -49,6 +50,7 @@ contract HelperConfig is Script {
         vm.stopBroadcast();
         localNetworkConfig = NetworkConfig({
             admin: makeAddr("pool_admin"),
+            feeRecipient: makeAddr("pool_fee_recipient"),
             dusdToken: dusdToken,
             oracle: IPriceOracle(address(oracle))
         });
@@ -65,6 +67,8 @@ contract HelperConfig is Script {
         // Previous hardcoded values went stale silently and would brick a
         // redeploy without anyone noticing until the first swap reverted.
         address admin = vm.envAddress("ADMIN_PUBLIC");
+        address feeRecipient = vm.envAddress("POOL_FEE_RECIPIENT");
+        require(feeRecipient != admin, "POOL_FEE_RECIPIENT must differ from ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
         // Dedicated FIOracle price signer; defaults to the backend signer
         // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
@@ -76,6 +80,7 @@ contract HelperConfig is Script {
         vm.stopBroadcast();
         primedeltaDevNetworkConfig = NetworkConfig({
             admin: admin,
+            feeRecipient: feeRecipient,
             dusdToken: IERC20(dusdTokenAddress),
             oracle: IPriceOracle(address(fiOracle))
         });
@@ -94,6 +99,8 @@ contract HelperConfig is Script {
         // Broadcast as ADMIN because FIOracle.setPricePerUpdate requires
         // DEFAULT_ADMIN_ROLE which is held by ADMIN (not MASTER).
         address admin = vm.envAddress("ADMIN_PUBLIC");
+        address feeRecipient = vm.envAddress("POOL_FEE_RECIPIENT");
+        require(feeRecipient != admin, "POOL_FEE_RECIPIENT must differ from ADMIN_PUBLIC");
         address backendSigner = vm.envAddress("BACKEND_SIGNER_ADDRESS");
         // Dedicated FIOracle price signer; defaults to the backend signer
         // when FI_ORACLE_SIGNER_ADDRESS is unset (signers collapsed).
@@ -105,6 +112,7 @@ contract HelperConfig is Script {
         vm.stopBroadcast();
         primedeltaTestnetNetworkConfig = NetworkConfig({
             admin: admin,
+            feeRecipient: feeRecipient,
             dusdToken: IERC20(dusdTokenAddress),
             oracle: IPriceOracle(address(fiOracle))
         });
